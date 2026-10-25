@@ -1,6 +1,6 @@
 // ===== Lektra service worker: makes the app installable + fully offline =====
 // Bump CACHE when you ship changes so phones pick up the new version.
-var CACHE = "lektra-v37";
+var CACHE = "lektra-v41";
 
 var ASSETS = [
   "./",
@@ -16,6 +16,7 @@ var ASSETS = [
   "./js/voice.js",
   "./js/reminders.js",
   "./js/scan.js",
+  "./js/liquid.js",
   "./js/main.js",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
