@@ -35,7 +35,7 @@ Most "offline" apps still phone home. Lektra genuinely does not, and that is by 
 
 | Layer | What it does |
 |---|---|
-| **Service worker** (`sw.js`) | On first visit it caches the entire app (18 files — HTML, CSS, all JS, icons, manifest). Every later launch is served from that cache, so the app opens instantly and works with **flight mode on**. |
+| **Service worker** (`sw.js`) | On first visit it caches the whole app shell — HTML, CSS, all JS, icons, font and manifest. Every later launch is served from that cache, so the app opens instantly and works with **flight mode on**. |
 | **IndexedDB** (`js/db.js`) | Your subjects, lectures and entries live here, plus the **actual bytes** of every lecture file you add. Survives reloads, closing the app, and rebooting the phone. |
 | **localStorage** | A lightweight mirror of your data used for an instant first paint before IndexedDB loads. |
 | **No backend, no account** | There is no server, no database, no analytics, and no Google Drive. Your timetable never leaves the device — with **one deliberate exception**: "Scan a timetable photo", which sends that one photo to Puter to be read, and only after you tap it. Nothing else is ever uploaded. |
@@ -82,8 +82,8 @@ Seven entry types, split into two very different behaviours:
 - **Subjects act as folders**, each auto-assigned a colour from the palette.
 - **Add real lecture files** — PDFs, slides, images, anything — via a multi-select picker.
   They are stored on the device and shown with their size.
-- **Tap a file to open or download it** any time, even offline.
-- **Backup and restore** your schedule as JSON from Settings.
+- **Tap a file to download it** any time, even offline.
+- **Backup and restore** your schedule as JSON from Settings. Saved lecture files themselves stay on the device and are not included in the JSON.
 
 ### Scan a timetable photo (AI import)
 Typing out a whole college timetable is tedious, so Lektra can read one from a photo.
@@ -182,6 +182,46 @@ Lektra nudges you before classes and deadlines.
 > when you reopen it. If the app is fully closed, nothing fires at that exact moment — that
 > is a browser restriction, not a bug, and the only real fix is a native app.
 
+### Appearance
+- **App theme** — Light, Dark, or follow the system, with six accent colours.
+- **Themes** — 40+ light and dark presets in a stacked gallery, plus your own custom
+  themes (name + accent) and **Quiet**, a grayscale black-and-white theme. Themes
+  change the app paint, accent and selected controls.
+- **Calendar indicators** — choose **Bars**, **Pills**, **Dots** or **None**; switch
+  between **Calendars**, **Theme** and **Single Color** colour modes; apply one of
+  14 palettes (Rainbow, Pastel, Jewel, Earth, Ocean, Sunset, Candy, Neon, Forest, Berry,
+  Ink & Coral, Navy & Gold, Plum & Mint, Slate & Sky) or build your own set (tap the
+  selected set again to return to the original palette); and pick which subject calendars
+  show indicators. The chosen colours drive the day paint, entries and indicator marks on
+  the month grid.
+- **Day color** — choose how event colours paint the day itself: **Fill** (tinted
+  background with a coloured frame), **Corner** (a coloured folded corner), **Stripe**
+  (a coloured left edge bar), **Dot** (a small corner dot), **Top** (a coloured top edge
+  bar), **Number** (a coloured day number), **Badge** (a coloured pill behind the day
+  number) or **None** (no day paint; event indicators stay visible). Fill is the only
+  style that draws a frame; today keeps its neutral outline in the other styles.
+
+### Month Options
+- **Style** — paint the month cells as **Cards**, **Frosted**, **Soft**, **Tint** or
+  **Minimal**. Each style sets the base cell surface; **Day color** decides how event
+  days are painted on top of it.
+- **Layout** — **Compact** or **Fullscreen** for the month grid. **Month + List** keeps
+  the grid compact and adds one agenda of everything in the month; **Month + Lists**
+  groups that agenda by subject. Both lists scroll with the month and open the matching
+  day when tapped.
+- **Weekday labels** — **Chips**, **Plain** or **Hidden**, with **Short (MON)** or
+  **Tiny (M)** letters.
+- **Events** — show entries as **Bars** (subject name plus a coloured dot), **Pills**
+  (solid capsules), **Dots** or **None**. **Text size** scales the labels in Bars.
+- **Day numbers** — choose **Small**, **Medium** or **Large**, and place them on the
+  **Left**, **Centered** or **Right** of each cell.
+- **General** — **Calendar Filters** toggles the subject filter row above the month grid;
+  turning it off also clears the active filter.
+
+The event style is shared with the **Calendar indicators** row in Appearance, so changing
+one updates the other. The month **Style** sets the cell surface; **Day color** in
+Appearance then chooses how the subject colour is applied on top of it.
+
 ### Settings and data
 - **Voice language** — العربية (مصر) or English, which sets the speech recogniser locale.
 - **Storage info** — how many files you have stored offline and roughly how much space
@@ -196,10 +236,11 @@ Lektra nudges you before classes and deadlines.
 - Runs in **standalone mode**: its own icon, no address bar, no browser chrome.
 - Declared **portrait**, with a **maskable icon** so Android can shape it to the launcher.
 - Respects **notch and home-indicator safe areas**, so nothing hides under the status bar.
-- Works **fully offline** after the first load, including opening saved lecture files.
+- Works **fully offline** after the first load, including downloading saved lecture files.
 
 ### Interface polish
-- **Dark by default**, designed phone-first.
+- **Dark-first design**, with light and system modes, accent colours and a theme gallery;
+  designed phone-first.
 - On a desktop it renders inside a **phone frame** (rounded corners, bezel) once the window
   is wider than 560px, so it looks like the device it's meant for.
 - **Container queries** keep every element scaling with the app's own width rather than the
@@ -216,7 +257,7 @@ Deliberately boring, deliberately dependency-free. There is **no framework, no b
 no `npm install`, and no build step** — the files you see are the files that run.
 
 **Languages & markup**
-- **HTML5** — a single 46-line shell (`index.html`); all screens are rendered into it
+- **HTML5** — a single HTML shell (`index.html`); all screens are rendered into it
 - **CSS3** — custom properties, **CSS Grid**, flexbox, `@keyframes`, `aspect-ratio`,
   media queries and `prefers-color-scheme`
 - **Vanilla JavaScript** — ES5-style, written as plain global scripts loaded in order
@@ -225,7 +266,7 @@ no `npm install`, and no build step** — the files you see are the files that r
 - **Container queries** (`container-type: inline-size` + `cqw` units) for device-relative sizing
 - `env(safe-area-inset-*)` for notched displays
 - `100dvh` with a `@supports` fallback for mobile browser toolbars
-- `color-scheme: dark` so native date/time pickers match the theme
+- `color-scheme` follows the selected theme so native date/time pickers match
 
 **Web platform APIs used**
 | API | Used for |
@@ -239,7 +280,7 @@ no `npm install`, and no build step** — the files you see are the files that r
 | **Web Speech API** (`SpeechRecognition`) | Voice input |
 | **Canvas** (`drawImage`, `toBlob`) | Shrinking a timetable photo before upload |
 | **Puter.js** (CDN, loaded on demand) | Vision model for the optional AI timetable import |
-| **File API**, **Blob**, **`URL.createObjectURL`** | Picking, storing and reopening lecture files |
+| **File API**, **Blob**, **`URL.createObjectURL`** | Picking, storing and downloading lecture files |
 | **Fetch**, **Promises** | Async data flow |
 | `Blob` + anchor download | JSON backup export |
 
@@ -308,10 +349,12 @@ Lektra/
 ├── dev-server.py       Static server with Cache-Control: no-store (no stale edits)
 ├── README.md
 ├── css/
-│   └── style.css       All styling: dark theme, grid, container queries
+│   └── style.css       All styling: dark/light paint tokens, grid, container queries
 ├── js/
 │   ├── db.js           IndexedDB: state store, file store, backup/restore
-│   ├── state.js        App state, helpers, entry types, persistence
+│   ├── state.js        App state, helpers, entry types, persistence, theme presets
+│   ├── appearance.js   Appearance page, theme gallery, custom themes, indicators
+│   ├── month.js        Month Options page, style/layout previews, month settings
 │   ├── modal.js        Bottom-sheet modal
 │   ├── calendar.js     Month grid, day sheet, add-entry form
 │   ├── subjects.js     Subject folders and local file storage
@@ -326,7 +369,9 @@ Lektra/
     ├── icon-512.png           PWA icon (install requirement)
     ├── icon-maskable-512.png  Adaptive icon for Android launchers
     ├── apple-touch-icon.png   iOS home-screen icon
-    └── banner.png             This README's banner
+    ├── banner.png             This README's banner
+    └── fonts/
+        └── nunito-latin.woff2 Bundled app font (offline)
 ```
 
 ---

@@ -221,10 +221,15 @@ function enableReminders() {
     toast("Notifications are blocked in your browser settings");
     return Promise.resolve(false);
   }
-  var ask = Notification.permission === "granted"
-    ? Promise.resolve("granted")
-    : Notification.requestPermission();
-  return ask.then(function (p) {
+  var ask;
+  try {
+    ask = Notification.permission === "granted"
+      ? "granted"
+      : Notification.requestPermission();
+  } catch (e) {
+    ask = "denied";
+  }
+  return Promise.resolve(ask).then(function (p) {
     if (p !== "granted") { toast("Not allowed — reminders stay off"); return false; }
     ensureReminders().enabled = true; save();
     toast("Reminders on ✓");

@@ -30,6 +30,14 @@ function renderSubjects() {
       state.subjects = state.subjects.filter(function (s) { return s.id !== id; });
       state.lectures = state.lectures.filter(function (l) { return l.subjectId !== id; });
       state.events = state.events.filter(function (e) { return e.subjectId !== id; });
+      if (state.settings) {
+        if (Array.isArray(state.settings.hidden)) {
+          state.settings.hidden = state.settings.hidden.filter(function (x) { return x !== id; });
+        }
+        if (state.settings.dayFilters && Array.isArray(state.settings.dayFilters.calendars)) {
+          state.settings.dayFilters.calendars = state.settings.dayFilters.calendars.filter(function (x) { return x !== id; });
+        }
+      }
       if (filterId === id) filterId = null;
       save(); render();
       if (typeof deleteFilesOf === "function") deleteFilesOf(id).catch(function () {});
@@ -77,12 +85,21 @@ function renderFolder(main, s) {
   document.getElementById("pick").onclick = function () { input.click(); };
   input.onchange = function () {
     var files = Array.prototype.slice.call(input.files);
+    input.value = "";   // picking the same file again should fire change
     if (!files.length) return;
+    var saved = 0, failed = 0;
     toast("Saving " + files.length + " file" + (files.length > 1 ? "s" : "") + "…");
     Promise.all(files.map(function (file) {
       return putFile(s.id, file).then(function (rec) {
         s.files.push({ id: rec.id, name: rec.name, size: rec.size, type: rec.type });
-      }).catch(function () { toast("Could not save " + file.name); });
-    })).then(function () { save(); render(); toast("Saved on this device ✓"); });
+        saved++;
+      }).catch(function () {
+        failed++;
+        toast("Could not save " + file.name);
+      });
+    })).then(function () {
+      save(); render();
+      if (saved) toast(failed ? "Saved " + saved + " of " + files.length + " files" : "Saved on this device ✓");
+    });
   };
 }

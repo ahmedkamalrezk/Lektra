@@ -3,7 +3,9 @@ function render() {
   document.getElementById("bCal").className = "round" + (tab === "cal" ? " on" : "");
   document.getElementById("bSub").className = "round" + (tab === "sub" ? " on" : "");
   document.getElementById("app").classList.toggle("day-view", tab === "cal" && !!dayOpen);
+  document.getElementById("app").classList.toggle("timeline-view", tab === "cal" && !!dayOpen && currentDayView() === "notes");
   document.getElementById("app").classList.toggle("year-view", tab === "cal" && !!yearOpen && !dayOpen);
+  document.getElementById("app").classList.toggle("month-view", tab === "cal" && !dayOpen && !yearOpen);
   if (tab === "cal") renderCalendar(); else renderSubjects();
 }
 document.getElementById("bCal").onclick = function () { tab = "cal"; dayOpen = null; yearOpen = false; render(); };
@@ -23,14 +25,34 @@ var SET_ICON = {
   globe: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></svg>',
   bell: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
   backup: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10"/><path d="M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>',
-  more: '<svg class="mi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>'
+  paint: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18 3 3 0 0 0 0-6 3 3 0 0 1 0-6 3 3 0 0 0 0-6z" fill="currentColor" stroke="none"/></svg>',
+  month: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.4" width="18" height="16.6" rx="4"/><path d="M7.8 2.6v3.4M16.2 2.6v3.4M3 9.4h18"/><path d="M7.5 13h2M11 13h2M14.5 13h2M7.5 17h2M11 17h2"/></svg>',
+  more: '<svg class="mi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+  person: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9.1" r="2.6"/><path d="M6.7 18.1a6.3 6.3 0 0 1 10.6 0"/></svg>'
 };
 
+var DEV_INFO = {
+  name: "Ahmed Kamal",
+  role: "Developer of Lektra",
+  bio: "I build Lektra with my colleague Gamal Sameh — a calendar that keeps up with real life: the plans, the classes, and the little moments worth keeping. It's offline-first, so your semester stays with you.",
+  thanks: "Thanks for being here.",
+  links: [
+    { label: "Ahmed Kamal", handle: "@ahmedkamalrezk", url: "https://github.com/ahmedkamalrezk" },
+    { label: "Gamal Sameh", handle: "@Gemy21", url: "https://github.com/Gemy21" }
+  ]
+};
+var DEV_ICON = {
+  smiley: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true"><circle cx="32" cy="32" r="25"/><circle cx="23" cy="27" r="2.2" fill="currentColor" stroke="none"/><circle cx="41" cy="27" r="2.2" fill="currentColor" stroke="none"/><path d="M21 39c3.5 5 7.5 7.5 11 7.5S39.5 44 43 39"/></svg>',
+  github: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2.2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.8 1.2 1.8 1.2 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>'
+};
+
+// `back` is true (returns to the main settings) or the page to return to.
+// Sub-pages get both a chevron back button and a close button, like Appearance.
 function setHead(title, back) {
   return '<div class="shead">' +
-    (back ? '<button class="sback" data-set="back" aria-label="Back">' + SET_ICON.back + "</button>" : "") +
+    (back ? '<button class="sback plain" data-set="back" data-back="' + (back === true ? "main" : back) + '" aria-label="Back">' + SET_ICON.back + "</button>" : "") +
     "<h2>" + title + "</h2>" +
-    (back ? "" : '<button class="sx" data-set="close" aria-label="Close">' + SET_ICON.x + "</button>") +
+    '<button class="sx" data-set="close" aria-label="Close">' + SET_ICON.x + "</button>" +
     "</div>";
 }
 
@@ -42,6 +64,8 @@ var SET_PAGES = {
   main: function () {
     return setHead("Settings") +
       '<div class="menu">' +
+      setRow("appearance", SET_ICON.paint, "Appearance") +
+      setRow("month", SET_ICON.month, "Month Options") +
       setRow("lang", SET_ICON.globe, "Voice language") +
       setRow("reminders", SET_ICON.bell, "Reminders") +
       setRow("backup", SET_ICON.backup, "Backup &amp; restore") +
@@ -49,6 +73,9 @@ var SET_PAGES = {
       "</div>" +
       '<button class="pro" data-scan>Scan a timetable photo</button>';
   },
+  appearance: function () { return appearancePage(); },
+  month: function () { return monthOptionsPage(); },
+  filters: function () { return filterSheetHtml(); },
   lang: function () {
     return setHead("Voice language", true) +
       '<div class="chips" style="margin-top:4cqw">' +
@@ -73,39 +100,138 @@ var SET_PAGES = {
       '<div class="muted" id="storInfo">Everything is saved on this device and works offline.</div>' +
       '<div class="btns" style="margin-top:3cqw"><button id="exportBtn">Backup</button><button id="importBtn">Restore</button></div>' +
       '<input type="file" id="importFile" accept="application/json,.json" style="display:none">' +
-      '<div class="muted" style="margin-top:3cqw">A backup is a small file you can keep anywhere. Restoring replaces what is on this device.</div>';
+      '<div class="muted" style="margin-top:3cqw">A backup is a small schedule file you can keep anywhere. Saved lecture files stay on this device and are not included. Restoring replaces what is on this device.</div>';
   },
   more: function () {
     return setHead("More", true) +
       '<div class="muted">Lektra keeps your subjects, lectures, entries and files on this device. Everything except the AI timetable photo import works offline.</div>' +
+      '<div class="sect"><h3>About</h3>' +
+        '<button class="devrow" data-dev="1">' + SET_ICON.person + '<span>From the Developer</span>' + SET_ICON.chev + '</button>' +
+      '</div>' +
       '<label>Storage</label>' +
       '<div class="btns" style="margin-top:0"><button id="clearBtn" class="danger">Clear all data</button></div>' +
       '<div class="muted" style="margin-top:3cqw">Deleting removes every subject, lecture, entry and saved file. This cannot be undone.</div>';
   }
 };
 
+function developerSheetHtml() {
+  var links = DEV_INFO.links || [];
+  var linksHtml = links.length
+    ? '<div class="dev-links-label">Find us on GitHub</div>' +
+      '<div class="dev-links">' +
+      links.map(function (link) {
+        return '<a class="dev-link" href="' + esc(link.url) + '" target="_blank" rel="noopener">' +
+          DEV_ICON.github +
+          '<span>' + esc(link.label) + '</span>' +
+          '<span class="dev-handle">' + esc(link.handle) + '</span>' +
+          '</a>';
+      }).join("") +
+      '</div>'
+    : '';
+  return '<div class="handle"></div>' +
+    '<button class="dev-close" data-dev-close aria-label="Close">' + SET_ICON.x + '</button>' +
+    '<div class="dev-avatar">' + DEV_ICON.smiley + '</div>' +
+    '<h2 class="dev-name">Hi, I’m ' + esc(DEV_INFO.name) + '</h2>' +
+    '<p class="dev-role">' + esc(DEV_INFO.role) + '</p>' +
+    '<p class="dev-bio">' + esc(DEV_INFO.bio) + '</p>' +
+    linksHtml +
+    '<p class="dev-thanks">' + esc(DEV_INFO.thanks) + '</p>';
+}
+
+function openDeveloperSheet() {
+  var m = document.getElementById("modal");
+  m.className = "show";
+  if (typeof removeThemesSheet === "function") removeThemesSheet();
+  if (typeof removeIndicatorsSheet === "function") removeIndicatorsSheet();
+  removeDeveloperSheet();
+
+  var scrim = document.createElement("div");
+  scrim.className = "sheet-scrim dev-scrim";
+  scrim.onclick = dismissDeveloperSheet;
+
+  var ov = document.createElement("div");
+  ov.className = "box overlay devsheet";
+  ov.id = "devSheet";
+  ov.setAttribute("role", "dialog");
+  ov.setAttribute("aria-label", "From the Developer");
+  ov.innerHTML = developerSheetHtml();
+
+  m.appendChild(scrim);
+  m.appendChild(ov);
+  resetDrag(ov);
+  bindOverlayDrag(ov, dismissDeveloperSheet);
+  m.onclick = function (e) { if (e.target === this) dismissDeveloperSheet(); };
+  var close = ov.querySelector("[data-dev-close]");
+  if (close) close.onclick = dismissDeveloperSheet;
+  ov.scrollTop = 0;
+}
+
+function dismissDeveloperSheet() {
+  var m = document.getElementById("modal");
+  var ov = m.querySelector("#devSheet");
+  if (!ov || ov._closing) return;
+  ov._closing = true;
+  ov.style.transition = "transform .22s cubic-bezier(.2,.9,.25,1)";
+  ov.style.transform = "translateY(110%)";
+  var scrim = m.querySelector(".dev-scrim");
+  if (scrim) { scrim.style.transition = "opacity .18s"; scrim.style.opacity = "0"; }
+  setTimeout(function () {
+    if (m.querySelector("#devSheet") !== ov) return;
+    removeDeveloperSheet();
+    m.onclick = function (e) { if (e.target === this) closeModal(); };
+  }, 200);
+}
+
+function removeDeveloperSheet() {
+  var m = document.getElementById("modal");
+  var ov = m.querySelector("#devSheet");
+  if (ov) ov.remove();
+  var scrim = m.querySelector(".dev-scrim");
+  if (scrim) scrim.remove();
+}
+
 function openSettings() { settingsPage("main"); }
 
 function settingsPage(page) {
   var box = document.getElementById("box");
-  box.className = "box";
+  box.className = "box" + (page === "filters" ? " filtersheet" : "");
+  box.setAttribute("data-page", page);
   box.innerHTML = '<div class="handle"></div>' + (SET_PAGES[page] || SET_PAGES.main)();
   box.scrollTop = 0;
   resetDrag(box);
   dragToClose(box);
-  document.getElementById("modal").className = "show";
+  document.getElementById("modal").className = "show" + (page === "filters" ? " filter-mode" : "");
   document.getElementById("modal").onclick = function (e) { if (e.target === this) closeModal(); };
 
   box.querySelectorAll("[data-set]").forEach(function (b) {
     b.onclick = function () {
       var go = b.getAttribute("data-set");
       if (go === "close") { closeModal(); return; }
-      settingsPage(go === "back" ? "main" : go);
+      if (go === "back") { settingsPage(b.getAttribute("data-back") || "main"); return; }
+      settingsPage(go);
     };
   });
 
   var scan = box.querySelector("[data-scan]");
   if (scan) scan.onclick = function () { closeModal(); scanTimetable(); };
+
+  var dev = box.querySelector("[data-dev]");
+  if (dev) dev.onclick = openDeveloperSheet;
+
+  if (page === "filters") {
+    bindFilterSheet(box);
+    return;
+  }
+
+  if (page === "appearance") {
+    bindAppearancePage(page, box);
+    return;
+  }
+
+  if (page === "month") {
+    bindMonthOptions(box);
+    return;
+  }
 
   if (page === "lang") {
     box.querySelectorAll("[data-l]").forEach(function (b) {
@@ -157,7 +283,10 @@ function settingsPage(page) {
     document.getElementById("importBtn").onclick = function () { impFile.click(); };
     impFile.onchange = function () {
       var f = impFile.files[0];
-      if (f) importData(f).catch(function () { toast("That file is not a Lektra backup"); });
+      impFile.value = "";   // allow picking the same backup again after a failure
+      if (f) importData(f).then(function () { closeModal(); }).catch(function () {
+        toast("That file is not a Lektra backup");
+      });
     };
     return;
   }
@@ -165,13 +294,24 @@ function settingsPage(page) {
   if (page === "more") {
     document.getElementById("clearBtn").onclick = function () {
       if (!confirm("Delete every subject, lecture, entry and saved file? This cannot be undone.")) return;
-      clearAll().then(function () { closeModal(); tab = "cal"; openId = null; filterId = null; render(); toast("All data cleared"); });
+      clearAll().then(function () {
+        closeModal();
+        tab = "cal";
+        view = new Date(today.getFullYear(), today.getMonth(), 1);
+        dayOpen = null;
+        yearOpen = false;
+        openId = null;
+        filterId = null;
+        render();
+        toast("All data cleared");
+      });
     };
   }
 }
 
 function clearAll() {
   state = normalizeState({});
+  applyTheme();
   try { localStorage.removeItem(STATE_KEY); } catch (e) {}
   var jobs = [idbPut("kv", state, STATE_KEY).catch(function () {})];
   if (typeof idbAll === "function") {
@@ -203,8 +343,13 @@ if ("serviceWorker" in navigator) {
 
 // ===== Boot =====
 render();          // instant paint from the localStorage mirror
+setInterval(function () { if (refreshToday()) render(); }, 60000);
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden && refreshToday()) render();
+});
 requestPersist();  // ask the browser to keep our data
 loadStateFromDB().then(function (hadStored) {
+  applyTheme();              // the stored copy may carry another theme
   if (hadStored) render();  // IndexedDB is the source of truth once it loads
   initReminders();          // start the reminder ticker + catch up on anything missed
 }).catch(function () { initReminders(); });

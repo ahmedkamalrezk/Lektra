@@ -9,7 +9,9 @@ function dragToClose(box) {
   box._dragBound = true;
   var sy = 0, dy = 0, active = false;
   box.addEventListener("touchstart", function (e) {
-    if (box.scrollTop > 0 || !e.touches.length) { active = false; return; }
+    var scroller = box.querySelector(".fscroll");
+    var top = scroller ? scroller.scrollTop : box.scrollTop;
+    if (top > 0 || !e.touches.length) { active = false; return; }
     sy = e.touches[0].clientY; dy = 0; active = true;
     box.style.transition = "none";
   }, { passive: true });
@@ -38,6 +40,7 @@ function openModal(html, onOk) {
   box.className = "box";
   resetDrag(box);
   box.innerHTML = '<div class="handle"></div>' + html + '<div class="btns"><button id="mCancel">' + (onOk ? "Cancel" : "Close") + "</button>" + (onOk ? '<button class="ok" id="mOk">Save</button>' : "") + "</div>";
+  box.scrollTop = 0;
   document.getElementById("modal").className = "show";
   document.getElementById("modal").onclick = function (e) { if (e.target === this) closeModal(); };
   document.getElementById("mCancel").onclick = closeModal;
@@ -55,4 +58,13 @@ function openSheet(html) {
   document.getElementById("modal").onclick = function (e) { if (e.target === this) closeModal(); };
   dragToClose(box);
 }
-function closeModal() { document.getElementById("modal").className = ""; }
+function closeModal() {
+  // A pending AI scan must not reopen the sheet after the user closed it.
+  if (typeof cancelScan === "function") cancelScan();
+  var m = document.getElementById("modal");
+  m.className = "";
+  var ov = m.querySelector(".box.overlay");
+  if (ov) ov.remove();
+  var scrim = m.querySelector(".sheet-scrim");
+  if (scrim) scrim.remove();
+}

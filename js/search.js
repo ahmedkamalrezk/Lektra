@@ -15,6 +15,7 @@ function openSearch() {
     '<div class="stabs"><button class="stab on" data-f="all">All</button><button class="stab" data-f="ev">Events</button><button class="stab" data-f="cls">Classes</button></div>' +
     '<div id="qRes"></div>';
 
+  box.scrollTop = 0;
   resetDrag(box);
   dragToClose(box);
   document.getElementById("modal").className = "show search-mode";
@@ -25,7 +26,7 @@ function openSearch() {
   function emptyState() {
     return '<div class="sempty"><span class="seicon">' + SEARCH_ICON + "</span>" +
       "<b>Search anything in your calendar</b>" +
-      "<p>Try a subject, a kind (quiz, final), a place, a weekday, or a date like 2026-10-06.</p></div>";
+      "<p>Try a subject, a kind (quiz, final), a place, a weekday, or a date like " + esc(iso(today)) + ".</p></div>";
   }
 
   function jump(d) { closeModal(); tab = "cal"; view = new Date(d.getFullYear(), d.getMonth(), 1); render(); openDay(d); }

@@ -71,7 +71,7 @@ function deleteFilesOf(subjectId) {
 
 function countFiles() { return idbAll("files").then(function (all) { return all.length; }); }
 
-// Open a stored file: try to view it, fall back to downloading it.
+// Download a stored file.
 function openStoredFile(id) {
   return getFile(id).then(function (rec) {
     if (!rec || !rec.blob) { toast("File not found"); return; }
@@ -91,10 +91,10 @@ function openStoredFile(id) {
 
 // Ask the browser not to evict our data when storage gets tight.
 function requestPersist() {
-  if (navigator.storage && navigator.storage.persist) {
+  if (navigator.storage && navigator.storage.persist && navigator.storage.persisted) {
     navigator.storage.persisted().then(function (already) {
-      if (!already) navigator.storage.persist();
-    });
+      if (!already) return navigator.storage.persist();
+    }).catch(function () {});
   }
 }
 
@@ -123,13 +123,40 @@ function exportData() {
   setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
 }
 
+// The JSON backup carries file names and sizes, not the file bytes themselves.
+// Keep only metadata whose blob still exists on this device, so a backup restored
+// on another phone does not show files that cannot be opened.
+function reconcileFiles() {
+  if (typeof idbAll !== "function") return Promise.resolve();
+  return idbAll("files").then(function (all) {
+    var have = {};
+    (all || []).forEach(function (r) { if (r && r.id) have[r.id] = true; });
+    state.subjects.forEach(function (sub) {
+      sub.files = (sub.files || []).filter(function (f) { return f && f.id && have[f.id]; });
+    });
+  }).catch(function () {});
+}
+
 function importData(file) {
   return file.text().then(function (text) {
     var parsed = JSON.parse(text);
     var s = parsed && parsed.state ? parsed.state : parsed;
     if (!s || !Array.isArray(s.subjects)) throw new Error("Not a Lektra backup");
     state = normalizeState(s);
-    save(); render();
-    toast("Data restored");
+    return reconcileFiles().then(function () {
+      save();
+      if (typeof applyTheme === "function") applyTheme();
+      // A restored file should not leave the app on an old day or a dead filter.
+      if (typeof tab !== "undefined") tab = "cal";
+      if (typeof view !== "undefined" && typeof today !== "undefined") {
+        view = new Date(today.getFullYear(), today.getMonth(), 1);
+      }
+      if (typeof dayOpen !== "undefined") dayOpen = null;
+      if (typeof yearOpen !== "undefined") yearOpen = false;
+      if (typeof openId !== "undefined") openId = null;
+      if (typeof filterId !== "undefined") filterId = null;
+      render();
+      toast("Data restored");
+    });
   });
 }

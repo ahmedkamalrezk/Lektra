@@ -15,6 +15,22 @@ var SCAN_MAX_PX = 1600;                 // shrink big phone photos before sendin
 var SCAN_TIMEOUT_MS = 90000;
 var SCAN_MODELS = ["gpt-5.6-luna", null, "gemini-3.1-flash-lite"];  // null = Puter's default
 var scanLoader = null;
+var scanSeq = 0;
+var scanPreviewUrl = "";
+
+function revokeScanPreview() {
+  if (scanPreviewUrl) {
+    try { URL.revokeObjectURL(scanPreviewUrl); } catch (e) {}
+    scanPreviewUrl = "";
+  }
+}
+
+// Called when the sheet closes: invalidate the in-flight request and free the
+// preview image, so a late AI answer cannot pop the sheet back open.
+function cancelScan() {
+  scanSeq++;
+  revokeScanPreview();
+}
 
 // ===== load Puter.js only when actually needed =====
 function loadPuter() {
@@ -203,16 +219,25 @@ function scanAsk(file) {
       return Promise.reject(new Error("The AI didn't return anything usable. Try again, or add the classes by hand."));
     }
     var model = SCAN_MODELS[i++];
+    var timer = null;
     var guard = new Promise(function (_, rej) {
-      setTimeout(function () { rej(new Error("The AI took too long to answer. Try again.")); }, SCAN_TIMEOUT_MS);
+      timer = setTimeout(function () { rej(new Error("The AI took too long to answer. Try again.")); }, SCAN_TIMEOUT_MS);
     });
-    var call = model === null ? puter.ai.chat(prompt, file) : puter.ai.chat(prompt, file, { model: model });
+    var call;
+    try {
+      call = model === null ? puter.ai.chat(prompt, file) : puter.ai.chat(prompt, file, { model: model });
+    } catch (e) {
+      clearTimeout(timer);
+      return Promise.reject(e);
+    }
 
     return Promise.race([call, guard]).then(function (resp) {
+      clearTimeout(timer);
       var parsed = extractJson(responseText(resp));
       if (parsed) return parsed;
       return attempt();                      // unreadable answer -> try the next model
     }).catch(function (e) {
+      clearTimeout(timer);
       var m = String((e && e.message) || e).toLowerCase();
       if (/auth|sign|permission|denied|cancel|too long/.test(m)) {
         throw new Error(/too long/.test(m)
@@ -244,6 +269,8 @@ function scanTimetable() {
 }
 
 function scanRun(file) {
+  cancelScan();
+  var run = scanSeq;
   openModal(
     '<h2>Reading your timetable…</h2>' +
     '<div class="muted" id="scanMsg">Preparing the photo…</div>' +
@@ -252,12 +279,17 @@ function scanRun(file) {
   );
   var prev = document.getElementById("scanPrev");
   var msg = document.getElementById("scanMsg");
-  try { prev.src = URL.createObjectURL(file); } catch (e) {}
+  try {
+    scanPreviewUrl = URL.createObjectURL(file);
+    prev.src = scanPreviewUrl;
+  } catch (e) {}
 
   shrinkImage(file)
     .then(function (small) {
+      if (run !== scanSeq) return;
       msg.textContent = "Asking the AI to read it…";
       return loadPuter().then(function () {
+        if (run !== scanSeq) return;
         if (puter.auth && typeof puter.auth.isSignedIn === "function" && !puter.auth.isSignedIn()) {
           msg.textContent = "Waiting for you to sign in to Puter…";
         }
@@ -265,6 +297,8 @@ function scanRun(file) {
       });
     })
     .then(function (raw) {
+      if (run !== scanSeq) return;
+      revokeScanPreview();
       var entries = normalizeScan(raw);
       if (!entries.length) {
         scanFail("I couldn't find any classes in that photo. Try a straighter, clearer shot with the whole table in frame.");
@@ -273,6 +307,8 @@ function scanRun(file) {
       scanReview(entries);
     })
     .catch(function (e) {
+      if (run !== scanSeq) return;
+      revokeScanPreview();
       scanFail(e && e.message ? e.message : "Something went wrong.");
     });
 }
