@@ -735,8 +735,8 @@ body{display:flex;justify-content:center;align-items:center}
 
 /* ===== Day filters: Edit Filters sheet ===== */
 #modal.filter-mode{-webkit-backdrop-filter:blur(6px) saturate(1.05);backdrop-filter:blur(6px) saturate(1.05)}
-.box.filtersheet{width:calc(100% - 6.6cqw);height:62.5%;max-height:62.5%;margin:0 auto 1.6cqw;padding:2.5cqw 4.6cqw calc(14cqw + var(--safe-bottom));border:1px solid var(--line);border-radius:6.8cqw 6.8cqw 8.5cqw 8.5cqw;background:linear-gradient(to bottom,rgba(42,42,44,.9) 0%,rgba(42,42,44,.9) calc(100% - 18cqw),rgba(42,42,44,.55) 100%);box-shadow:0 -2cqw 7cqw rgba(0,0,0,.4),inset 0 1px 0 var(--f07);display:flex;flex-direction:column;overflow:hidden}
-:root[data-theme="light"] .box.filtersheet{background:linear-gradient(to bottom,rgba(250,250,252,.9) 0%,rgba(250,250,252,.9) calc(100% - 18cqw),rgba(250,250,252,.55) 100%)}
+.box.filtersheet{width:calc(100% - 6.6cqw);height:auto;max-height:62.5%;margin:0 auto 1.6cqw;padding:2.5cqw 4.6cqw calc(5cqw + var(--safe-bottom));border:1px solid var(--line);border-radius:6.8cqw 6.8cqw 8.5cqw 8.5cqw;background:linear-gradient(to bottom,rgba(42,42,44,.9) 0%,rgba(42,42,44,.9) calc(100% - 8cqw),rgba(42,42,44,.55) 100%);box-shadow:0 -2cqw 7cqw rgba(0,0,0,.4),inset 0 1px 0 var(--f07);display:flex;flex-direction:column;overflow:hidden}
+:root[data-theme="light"] .box.filtersheet{background:linear-gradient(to bottom,rgba(250,250,252,.9) 0%,rgba(250,250,252,.9) calc(100% - 8cqw),rgba(250,250,252,.55) 100%)}
 .filtersheet .fhead{display:flex;align-items:flex-start;gap:3cqw;margin:4.2cqw 0 0;flex:none}
 .filtersheet .ft{flex:1;min-width:0}
 .filtersheet .fhead h2{margin:0;font-size:4.7cqw;font-weight:800;letter-spacing:-.03em;line-height:1.15}
