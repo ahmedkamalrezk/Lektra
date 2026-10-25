@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Lektra</title>
 <meta name="description" content="Plan your week, track lectures, sections, labs, quizzes and deadlines. Works fully offline.">
-<meta name="theme-color" content="#161616">
+<meta name="theme-color" content="#0b0b0d">
 <meta name="color-scheme" content="dark light">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -25,7 +25,7 @@
   } catch (e) {}
   document.documentElement.setAttribute("data-theme", theme);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#f3f1ec" : "#161616");
+  if (meta) meta.setAttribute("content", theme === "light" ? "#f3f1ec" : "#0b0b0d");
   var status = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
   if (status) status.setAttribute("content", theme === "light" ? "default" : "black-translucent");
 })();
@@ -62,6 +62,7 @@
 <script src="js/voice.js"></script>
 <script src="js/reminders.js"></script>
 <script src="js/scan.js"></script>
+<script src="js/liquid.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

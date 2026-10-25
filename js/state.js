@@ -90,7 +90,7 @@ function applyTheme() {
   document.documentElement.setAttribute("data-theme", theme);
   document.documentElement.setAttribute("data-colors", state.calendarColors === "original" ? "original" : "quiet");
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#f3f1ec" : "#161616");
+  if (meta) meta.setAttribute("content", theme === "light" ? "#f3f1ec" : "#0b0b0d");
   var status = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
   if (status) status.setAttribute("content", theme === "light" ? "default" : "black-translucent");
   return theme;
