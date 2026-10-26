@@ -155,6 +155,58 @@ function accentInk(hex) {
   return lum > 0.6 ? "#111114" : "#fff";
 }
 
+// iOS shows the page/body background in the status-bar strip above the web
+// layer. When a sheet is open the page behind it is dimmed, so match that strip
+// to the dimmed colour instead of leaving a bright band above the scrim.
+function parseCssColor(c) {
+  c = String(c || "").trim();
+  if (c.charAt(0) === "#") {
+    var h = c.slice(1);
+    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    if (h.length === 6 || h.length === 8) {
+      return [
+        parseInt(h.slice(0, 2), 16),
+        parseInt(h.slice(2, 4), 16),
+        parseInt(h.slice(4, 6), 16),
+        h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1
+      ];
+    }
+  }
+  var m = c.match(/rgba?\(([^)]+)\)/i);
+  if (m) {
+    var p = m[1].split(",").map(function (x) { return parseFloat(x); });
+    if (p.length >= 3) return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
+  }
+  return [0, 0, 0, 0];
+}
+
+function blendCssColor(fg, bg) {
+  var f = parseCssColor(fg), b = parseCssColor(bg);
+  var a = f[3] + b[3] * (1 - f[3]);
+  if (!a) return "#000000";
+  var r = Math.round((f[0] * f[3] + b[0] * b[3] * (1 - f[3])) / a);
+  var g = Math.round((f[1] * f[3] + b[1] * b[3] * (1 - f[3])) / a);
+  var bl = Math.round((f[2] * f[3] + b[2] * b[3] * (1 - f[3])) / a);
+  function hex(n) { return ("0" + Math.max(0, Math.min(255, n)).toString(16)).slice(-2); }
+  return "#" + hex(r) + hex(g) + hex(bl);
+}
+
+function syncThemeColor() {
+  var root = document.documentElement;
+  var appBg = getComputedStyle(root).getPropertyValue("--app-bg").trim() || "#161616";
+  var modal = document.getElementById("modal");
+  var color = appBg;
+  if (modal && modal.classList.contains("show")) {
+    color = blendCssColor(getComputedStyle(modal).backgroundColor, appBg);
+  }
+  // The strip above the web layer samples the page background; the meta tag
+  // covers browsers that use theme-color instead. Setting both keeps the
+  // status bar flush with the app in light, dark and custom themes.
+  root.style.setProperty("--status-bg", color);
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", color);
+}
+
 function applyTheme() {
   var root = document.documentElement;
   var s = state.settings;
@@ -185,8 +237,7 @@ function applyTheme() {
     app.setAttribute("data-dn-pos", s.dayNumPosition || "left");
     app.setAttribute("data-day-color", s.dayColor || "fill");
   }
-  var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", appBg);
+  syncThemeColor();
   var cs = document.querySelector('meta[name="color-scheme"]');
   if (cs) cs.setAttribute("content", mode);
   if (typeof refreshAppearance === "function") refreshAppearance();
@@ -217,6 +268,17 @@ try {
 } catch (e) {}
 state = normalizeState(state);   // the built-in default needs normalising too
 applyTheme();                    // paint the saved theme before the first render
+
+// Keep the Safari status bar in step with sheets opening and closing.
+if (window.MutationObserver) {
+  var modalWatch = document.getElementById("modal");
+  if (modalWatch) {
+    new MutationObserver(syncThemeColor).observe(modalWatch, {
+      attributes: true,
+      attributeFilter: ["class"]
+    });
+  }
+}
 
 // Make sure a state object loaded from disk/storage always has the shape the app expects.
 function normalizeState(s) {
