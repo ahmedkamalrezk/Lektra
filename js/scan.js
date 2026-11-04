@@ -12,11 +12,16 @@
 
 var SCAN_SCRIPT = "https://js.puter.com/v2/";
 var SCAN_MAX_PX = 1600;                 // shrink big phone photos before sending
+var SCAN_MAX_BYTES = 900 * 1024;        // small enough already? don't re-encode it
+var SCAN_QUALITY = 0.86;
 var SCAN_TIMEOUT_MS = 90000;
 var SCAN_MODELS = ["gpt-5.6-luna", null, "gemini-3.1-flash-lite"];  // null = Puter's default
 var scanLoader = null;
 var scanSeq = 0;
 var scanPreviewUrl = "";
+var scanTicker = null;      // ticker that keeps the elapsed clock alive
+var scanStartedAt = 0;
+var scanStageAt = 0;
 
 function revokeScanPreview() {
   if (scanPreviewUrl) {
@@ -25,10 +30,12 @@ function revokeScanPreview() {
   }
 }
 
-// Called when the sheet closes: invalidate the in-flight request and free the
-// preview image, so a late AI answer cannot pop the sheet back open.
+// Called when the sheet closes: invalidate the in-flight request, stop the
+// clock and free the preview image, so a late AI answer cannot pop the sheet
+// back open.
 function cancelScan() {
   scanSeq++;
+  scanTickStop();
   revokeScanPreview();
 }
 
@@ -49,10 +56,49 @@ function loadPuter() {
   return scanLoader;
 }
 
-// ===== shrink the photo (cheaper, faster, more reliable) =====
+// ===== shrink the photo (the fallback path) =====
+// The worker below normally does this, off the main thread. This version is for
+// browsers without workers or OffscreenCanvas: createImageBitmap() still
+// decodes off the main thread, but the JPEG encode can still hiccup here.
 function shrinkImage(file) {
+  if (!/^image\//.test(file.type)) return Promise.resolve(file);
+  if (typeof createImageBitmap !== "function") return shrinkImageLegacy(file);
+
+  return createImageBitmap(file).then(function (bmp) {
+    var w = bmp.width || 1, h = bmp.height || 1;
+    var scale = Math.min(1, SCAN_MAX_PX / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+
+    // Already a small, sensible JPEG: send it untouched.
+    if (scale === 1 && file.size <= SCAN_MAX_BYTES) return file;
+
+    if (typeof OffscreenCanvas === "function") {
+      var off = new OffscreenCanvas(cw, ch);
+      off.getContext("2d").drawImage(bmp, 0, 0, cw, ch);
+      if (bmp.close) bmp.close();
+      return off.convertToBlob({ type: "image/jpeg", quality: SCAN_QUALITY }).then(function (blob) {
+        return blob ? new File([blob], "timetable.jpg", { type: "image/jpeg" }) : file;
+      });
+    }
+
+    // No OffscreenCanvas: draw into a normal canvas, but at least the decode
+    // above already happened off the main thread.
+    var c = document.createElement("canvas");
+    c.width = cw; c.height = ch;
+    c.getContext("2d").drawImage(bmp, 0, 0, cw, ch);
+    if (bmp.close) bmp.close();
+    return new Promise(function (resolve) {
+      c.toBlob(function (blob) {
+        resolve(blob ? new File([blob], "timetable.jpg", { type: "image/jpeg" }) : file);
+      }, "image/jpeg", SCAN_QUALITY);
+    });
+  }).catch(function () {
+    return shrinkImageLegacy(file);
+  });
+}
+
+function shrinkImageLegacy(file) {
   return new Promise(function (resolve) {
-    if (!/^image\//.test(file.type)) { resolve(file); return; }
     var url;
     try { url = URL.createObjectURL(file); } catch (e) { resolve(file); return; }
     var img = new Image();
@@ -68,11 +114,95 @@ function shrinkImage(file) {
           URL.revokeObjectURL(url);
           if (!blob) { resolve(file); return; }
           resolve(new File([blob], "timetable.jpg", { type: "image/jpeg" }));
-        }, "image/jpeg", 0.85);
+        }, "image/jpeg", SCAN_QUALITY);
       } catch (e) { URL.revokeObjectURL(url); resolve(file); }
     };
     img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
     img.src = url;
+  });
+}
+
+// ===== hand the photo work to a worker =====
+// Encoding the JPEG alone blocks the page for ~130 ms on a laptop and several
+// times that on a phone, which is the part that made scanning feel frozen. The
+// worker below keeps the spinner and the clock moving; if it is unavailable the
+// code above does the same job here instead.
+var scanWorker = null;
+var scanWorkerBroken = false;
+var scanWorkerSeq = 0;
+var scanWorkerJobs = {};
+
+function scanWorkerAnswer(d) {
+  var job = scanWorkerJobs[d.id];
+  if (!job) return;                     // cancelled, or already answered
+  delete scanWorkerJobs[d.id];
+  clearTimeout(job.timer);
+  if (d.blob) {
+    job.resolve(new File([d.blob], "timetable.jpg", { type: "image/jpeg" }));
+    return;
+  }
+  if (d.skip) { job.resolve(job.file); return; }
+  shrinkImage(job.file).then(job.resolve);   // error / unsupported
+}
+
+function scanWorkerStop() {
+  var pending = scanWorkerJobs;
+  scanWorkerJobs = {};
+  try { if (scanWorker) scanWorker.terminate(); } catch (e) {}
+  scanWorker = null;
+  return pending;
+}
+
+function scanWorkerStart() {
+  if (scanWorker) return scanWorker;
+  if (scanWorkerBroken || typeof Worker !== "function") { scanWorkerBroken = true; return null; }
+  try {
+    scanWorker = new Worker("js/scan-worker.js");
+  } catch (e) {
+    scanWorkerBroken = true;
+    scanWorker = null;
+    return null;
+  }
+  scanWorker.onmessage = function (e) { scanWorkerAnswer(e.data || {}); };
+  scanWorker.onerror = function () {
+    // Don't retry a broken worker on every scan: finish what is pending here
+    // and use the main-thread path from now on.
+    scanWorkerBroken = true;
+    var pending = scanWorkerStop();
+    Object.keys(pending).forEach(function (k) {
+      var job = pending[k];
+      clearTimeout(job.timer);
+      shrinkImage(job.file).then(job.resolve);
+    });
+  };
+  return scanWorker;
+}
+
+function scanPrepTimetable(file) {
+  if (!/^image\//.test(file.type)) return shrinkImage(file);
+  var w = scanWorkerStart();
+  if (!w) return shrinkImage(file);
+  return new Promise(function (resolve) {
+    var id = ++scanWorkerSeq;
+    var job = { file: file, resolve: resolve, timer: null };
+    scanWorkerJobs[id] = job;
+    // Watchdog: a worker that hangs must not leave the card spinning forever.
+    job.timer = setTimeout(function () {
+      if (!scanWorkerJobs[id]) return;
+      delete scanWorkerJobs[id];
+      scanWorkerBroken = true;
+      try { scanWorker.terminate(); } catch (e) {}
+      scanWorker = null;
+      shrinkImage(file).then(resolve);
+    }, 15000);
+    try {
+      w.postMessage({ id: id, file: file });
+    } catch (e) {
+      delete scanWorkerJobs[id];
+      clearTimeout(job.timer);
+      scanWorkerBroken = true;
+      shrinkImage(file).then(resolve);
+    }
   });
 }
 
@@ -210,7 +340,9 @@ function normalizeScan(raw) {
 }
 
 // ===== asking the model =====
-function scanAsk(file) {
+// onStage is optional: it is called with the attempt number so the loading card
+// can say "trying a different model" instead of looking stuck on one line.
+function scanAsk(file, onStage) {
   var prompt = scanPrompt();
   var i = 0;
 
@@ -219,6 +351,7 @@ function scanAsk(file) {
       return Promise.reject(new Error("The AI didn't return anything usable. Try again, or add the classes by hand."));
     }
     var model = SCAN_MODELS[i++];
+    if (onStage) { try { onStage(i); } catch (e) {} }
     var timer = null;
     var guard = new Promise(function (_, rej) {
       timer = setTimeout(function () { rej(new Error("The AI took too long to answer. Try again.")); }, SCAN_TIMEOUT_MS);
@@ -263,12 +396,12 @@ function openAttachSheet() {
       '<button type="button" class="attach-card" id="attachLibrary">' +
         '<span class="attach-icon">' + ATTACH_PHOTO_ICON + '</span>' +
         '<span class="attach-name">Photo Library</span>' +
-        '<span class="attach-sub">A screenshot or a poster</span>' +
+        '<span class="attach-sub">A screenshot or a photo</span>' +
       '</button>' +
       '<button type="button" class="attach-card" id="attachCamera">' +
         '<span class="attach-icon">' + ATTACH_CAMERA_ICON + '</span>' +
         '<span class="attach-name">Camera</span>' +
-        '<span class="attach-sub">Shoot an invite or a flyer</span>' +
+        '<span class="attach-sub">Shoot the whole table</span>' +
       '</button>' +
     '</div>' +
     '<div class="attach-note">Lektra reads the dates and times out of the picture.</div>' +
@@ -277,6 +410,7 @@ function openAttachSheet() {
   );
   var box = document.getElementById("box");
   box.classList.add("attachsheet");
+  box.setAttribute("aria-label", "Add a timetable photo");
   var handle = box.querySelector(".handle");
   if (handle) handle.remove();
   var btns = box.querySelector(".btns");
@@ -292,69 +426,279 @@ function openAttachSheet() {
   document.getElementById("attachLibraryFile").onchange = function () {
     var f = this.files && this.files[0];
     if (!f) return;
-    closeModal();
+    // Hand straight over to the progress card: closing first would flash the
+    // picker away and back again.
     scanRun(f);
   };
 }
 
+// Every way into the scan (Settings, the Subjects tab, and the two retry
+// buttons in the scan flow) opens the same picker the composer's paperclip
+// uses, so there is one place to choose a photo from.
 function scanTimetable() {
-  openModal(
-    '<h2>Scan a timetable</h2>' +
-    '<div class="muted">Pick a photo of your college timetable. The AI reads it, then shows you every class it found so you can check them before saving.</div>' +
-    '<input type="file" id="scanFile" accept="image/*" style="display:none">' +
-    '<div class="btns" style="margin-top:12px"><button class="ok" id="scanPick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>Choose photo</button></div>' +
-    '<div class="muted" style="margin-top:3cqw">This is the only part of Lektra that needs internet. The photo is read by <b>Puter</b>, which asks you to sign in free the first time. Nothing else ever leaves your device.</div>',
-    null
-  );
-  document.getElementById("scanPick").onclick = function () { document.getElementById("scanFile").click(); };
-  document.getElementById("scanFile").onchange = function () {
-    var f = this.files && this.files[0];
-    if (f) scanRun(f);
-  };
+  openAttachSheet();
 }
 
-function scanRun(file) {
-  cancelScan();
-  var run = scanSeq;
+// ===== remembering a photo we have already read =====
+// Re-picking the same timetable photo shouldn't cost another AI call, so we
+// fingerprint the bytes and keep the classes that came back. Only the result is
+// stored, not the photo: the same file produces the same fingerprint next time.
+var SCAN_CACHE_MAX = 20;
+var scanLastKey = "";
+var scanLastFile = null;
+
+function scanPhotoKey(file) {
+  if (!file || !file.size) return Promise.resolve("");
+  try {
+    if (typeof crypto !== "undefined" && crypto.subtle && crypto.subtle.digest && file.arrayBuffer) {
+      return file.arrayBuffer().then(function (buf) {
+        return crypto.subtle.digest("SHA-256", buf);
+      }).then(function (hash) {
+        var b = new Uint8Array(hash), hex = "";
+        for (var i = 0; i < b.length; i++) hex += ("0" + b[i].toString(16)).slice(-2);
+        return "sha256:" + hex;
+      }).catch(function () { return scanPhotoFingerprint(file); });
+    }
+  } catch (e) {}
+  return Promise.resolve(scanPhotoFingerprint(file));
+}
+
+// Insecure origins (a LAN address, an old browser) have no crypto.subtle. Size,
+// name and modified time still tell the same photo apart well enough.
+function scanPhotoFingerprint(file) {
+  return "fp:" + (file.size || 0) + ":" + (file.lastModified || 0) + ":" + (file.name || "");
+}
+
+function scanCacheGet(key) {
+  if (!key || typeof getScan !== "function") return Promise.resolve(null);
+  return getScan(key).catch(function () { return null; });
+}
+
+function scanCachePut(key, entries, file) {
+  if (!key || !entries || !entries.length || typeof putScan !== "function") return Promise.resolve();
+  var rec = {
+    key: key,
+    at: Date.now(),
+    entries: entries,
+    name: (file && file.name) || "",
+    size: (file && file.size) || 0
+  };
+  return putScan(rec).then(function () {
+    return allScans();               // keep the last few only
+  }).then(function (all) {
+    if (!all || all.length <= SCAN_CACHE_MAX) return;
+    var old = all.sort(function (a, b) { return (a.at || 0) - (b.at || 0); })
+      .slice(0, all.length - SCAN_CACHE_MAX);
+    return Promise.all(old.map(function (r) { return deleteScan(r.key); }));
+  }).catch(function () {});
+}
+
+function scanWhen(ts) {
+  try {
+    return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  } catch (e) { return ""; }
+}
+
+// ===== the loading card =====
+// Two frames: one rAF can still land in the same paint as the tap, so wait for
+// the next one to guarantee the card is on screen before the work begins. The
+// timeout matters too: rAF is paused while the tab is in the background, and a
+// scan must not sit still because someone switched apps for a second.
+function nextPaint() {
+  return new Promise(function (resolve) {
+    var done = false;
+    function finish() { if (!done) { done = true; resolve(); } }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(finish);
+      });
+    }
+    setTimeout(finish, 120);
+  });
+}
+
+function scanElapsed(ms) {
+  var s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 1) return "";
+  if (s < 60) return s + "s";
+  return Math.floor(s / 60) + ":" + pad(s % 60);
+}
+
+// The clock is not decoration: it is the difference between "the app is doing
+// something" and "the app has frozen". It ticks whether or not a stage changes.
+function scanTickStop() {
+  if (scanTicker) { clearInterval(scanTicker); scanTicker = null; }
+}
+
+function scanTickStart() {
+  scanTickStop();
+  scanStartedAt = Date.now();
+  scanStageAt = scanStartedAt;
+  scanTicker = setInterval(function () {
+    var clock = document.getElementById("scanClock");
+    if (!clock) { scanTickStop(); return; }   // card was replaced or closed
+    clock.textContent = scanElapsed(Date.now() - scanStartedAt);
+    var msg = document.getElementById("scanMsg");
+    if (msg && Date.now() - scanStageAt > 18000) {
+      msg.textContent = "Still working — big timetables take a moment…";
+      scanStageAt = Date.now();
+    }
+  }, 500);
+}
+
+// Move the bar and the status line together, so progress and words never
+// disagree about which step is running.
+function scanStage(pct, label) {
+  var fill = document.getElementById("scanFill");
+  var msg = document.getElementById("scanMsg");
+  var track = fill ? fill.parentElement : null;
+  if (fill) fill.style.width = pct + "%";
+  if (track) track.setAttribute("aria-valuenow", String(pct));
+  if (msg && label) msg.textContent = label;
+  scanStageAt = Date.now();
+}
+
+function scanSignedIn() {
+  try {
+    return !!(typeof puter !== "undefined" && puter.auth &&
+      typeof puter.auth.isSignedIn === "function" && puter.auth.isSignedIn());
+  } catch (e) { return false; }
+}
+
+function scanReadLabel(attempt) {
+  if (attempt > 1) return "Trying a different model…";
+  return scanSignedIn() ? "Asking the AI to read it…" : "Waiting for you to sign in to Puter…";
+}
+
+function scanFileMeta(file) {
+  var parts = [];
+  var kb = file && file.size ? Math.round(file.size / 1024) : 0;
+  if (kb >= 1024) parts.push((kb / 1024).toFixed(1) + " MB");
+  else if (kb > 0) parts.push(kb + " KB");
+  var type = ((file && file.type) || "").replace("image/", "").toUpperCase();
+  if (type) parts.push(type);
+  return parts.join(" · ");
+}
+
+// The progress card, in the same floating shape as the photo picker, so
+// choosing a photo turns into progress instead of swapping sheets.
+function scanBusyOpen(file) {
   openModal(
-    '<h2>Reading your timetable…</h2>' +
-    '<div class="muted" id="scanMsg">Preparing the photo…</div>' +
-    '<img id="scanPrev" alt="" style="width:100%;border-radius:14px;margin-top:12px;display:block">',
+    '<div class="scan-ring" aria-hidden="true"></div>' +
+    '<h2>Reading your timetable</h2>' +
+    '<div class="scan-now"><span id="scanMsg" aria-live="polite">Preparing the photo…</span><b class="scan-clock" id="scanClock"></b></div>' +
+    '<div class="scan-track" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i class="scan-fill" id="scanFill"></i></div>' +
+    '<div class="scan-photo"><img id="scanPrev" alt=""><div class="i"><b>Your photo</b><span id="scanMeta"></span></div></div>' +
+    '<button type="button" class="scan-cancel" id="scanCancel">Cancel</button>',
     null
   );
-  var prev = document.getElementById("scanPrev");
-  var msg = document.getElementById("scanMsg");
+  var box = document.getElementById("box");
+  box.className = "box scanbusy";
+  var handle = box.querySelector(".handle");
+  if (handle) handle.remove();
+  var btns = box.querySelector(".btns");
+  if (btns) btns.remove();
+  document.getElementById("scanCancel").onclick = closeModal;
+
+  var meta = document.getElementById("scanMeta");
+  if (meta) meta.textContent = scanFileMeta(file);
   try {
     scanPreviewUrl = URL.createObjectURL(file);
-    prev.src = scanPreviewUrl;
+    document.getElementById("scanPrev").src = scanPreviewUrl;
   } catch (e) {}
+}
 
-  shrinkImage(file)
-    .then(function (small) {
-      if (run !== scanSeq) return;
-      msg.textContent = "Asking the AI to read it…";
-      return loadPuter().then(function () {
-        if (run !== scanSeq) return;
-        if (puter.auth && typeof puter.auth.isSignedIn === "function" && !puter.auth.isSignedIn()) {
-          msg.textContent = "Waiting for you to sign in to Puter…";
-        }
-        return scanAsk(small);
-      });
+// The scan is a short pipeline, not one blocking call: fingerprint -> check the
+// cache -> prepare -> send -> read -> check. Each step repaints the card and
+// yields, so the clock and the bar keep moving however long the network takes.
+//
+// opts.rescan skips the cache on purpose: it is the "read this photo again"
+// button on a cached result, for a timetable that has changed.
+function scanRun(file, opts) {
+  opts = opts || {};
+  cancelScan();
+  var run = scanSeq;
+
+  scanBusyOpen(file);
+  scanTickStart();
+  scanStage(6, opts.rescan ? "Reading this photo again…" : "Checking this photo…");
+
+  nextPaint()
+    .then(function () {
+      if (run !== scanSeq) return null;
+      return scanPhotoKey(file);
     })
-    .then(function (raw) {
-      if (run !== scanSeq) return;
-      revokeScanPreview();
-      var entries = normalizeScan(raw);
-      if (!entries.length) {
-        scanFail("I couldn't find any classes in that photo. Try a straighter, clearer shot with the whole table in frame.");
-        return;
-      }
-      scanReview(entries);
+    .then(function (key) {
+      if (run !== scanSeq) return null;
+
+      if (opts.rescan) return scanAnalyse(file, run, key);
+
+      return scanCacheGet(key).then(function (hit) {
+        if (run !== scanSeq) return null;
+        if (!hit || !hit.entries || !hit.entries.length) return scanAnalyse(file, run, key);
+
+        // This exact photo was read before: show those classes straight away.
+        scanTickStop();
+        revokeScanPreview();
+        scanStage(100, "Showing the scan from " + scanWhen(hit.at) + "…");
+        return nextPaint().then(function () {
+          if (run !== scanSeq) return;
+          scanReview(hit.entries, { cached: true, at: hit.at, file: file, key: key });
+        });
+      });
     })
     .catch(function (e) {
       if (run !== scanSeq) return;
+      scanTickStop();
       revokeScanPreview();
       scanFail(e && e.message ? e.message : "Something went wrong.");
+    });
+}
+
+function scanAnalyse(file, run, key) {
+  if (run !== scanSeq) return null;
+
+  // The AI helper is a network download, so start it now and let it overlap the
+  // image work instead of making the student wait for one, then the other.
+  var sdk = loadPuter();
+  sdk.catch(function () {});          // re-reported by scanRun; keeps it "handled"
+
+  scanStage(18, "Preparing the photo…");
+
+  return nextPaint()
+    .then(function () {
+      if (run !== scanSeq) return null;
+      return scanPrepTimetable(file);
+    })
+    .then(function (small) {
+      if (run !== scanSeq) return null;
+      scanStage(38, typeof puter === "undefined" ? "Loading the AI helper…" : "Sending the photo…");
+      return sdk.then(function () { return small; });
+    })
+    .then(function (small) {
+      if (run !== scanSeq) return null;
+      scanStage(64, scanReadLabel(1));
+      return scanAsk(small, function (attempt) {
+        if (run !== scanSeq) return;
+        scanStage(64, scanReadLabel(attempt));
+      });
+    })
+    .then(function (raw) {
+      if (run !== scanSeq) return null;
+      scanStage(94, "Checking the classes…");
+      var entries = normalizeScan(raw);
+      return nextPaint().then(function () {
+        if (run !== scanSeq) return;
+        scanTickStop();
+        revokeScanPreview();
+        if (!entries.length) {
+          scanFail("I couldn't find any classes in that photo. Try a straighter, clearer shot with the whole table in frame.");
+          return;
+        }
+        // Remember the result, so re-picking this photo is instant and free.
+        scanCachePut(key, entries, file);
+        scanReview(entries, { at: Date.now(), file: file, key: key });
+      });
     });
 }
 
@@ -367,15 +711,73 @@ function scanFail(message) {
   document.getElementById("scanRetry").onclick = scanTimetable;
 }
 
+// ===== don't lose a scan by accident =====
+// The detected classes live only inside the review sheet until Save, so every
+// way out of it (Close button, backdrop tap, drag down) asks first. The warning
+// is a layer on top: the sheet and everything typed into it stay untouched.
+function removeScanWarn() {
+  var w = document.querySelector(".scan-warn");
+  if (w) w.remove();
+}
+
+function askBeforeDiscardScan() {
+  if (document.querySelector(".scan-warn")) return false;   // already asking
+  var modal = document.getElementById("modal");
+  if (!modal) return true;
+
+  var wrap = document.createElement("div");
+  wrap.className = "scan-warn";
+  wrap.innerHTML =
+    '<div class="scan-warn-card" role="alertdialog" aria-modal="true" aria-labelledby="scanWarnTitle">' +
+      '<b id="scanWarnTitle">Discard these classes?</b>' +
+      '<p>They have not been saved yet. If you close now they are not added to your timetable, and you will have to open the photo again.</p>' +
+      '<div class="scan-warn-btns">' +
+        '<button type="button" id="scanWarnStay">Keep editing</button>' +
+        '<button type="button" class="danger" id="scanWarnGo">Discard</button>' +
+      '</div>' +
+    '</div>';
+  modal.appendChild(wrap);
+
+  wrap.onclick = function (e) { if (e.target === wrap) removeScanWarn(); };
+  document.getElementById("scanWarnStay").onclick = removeScanWarn;
+  document.getElementById("scanWarnGo").onclick = function () {
+    removeScanWarn();
+    modalCloseGuard = null;        // they chose to leave: don't ask twice
+    closeModal();
+  };
+  return false;                    // keep the review sheet open for now
+}
+
 // ===== review before anything is saved =====
-function scanReview(entries) {
-  var html = '<h2>Check what I found</h2><div class="muted">' + entries.length + " class" +
-    (entries.length > 1 ? "es" : "") + " detected. Uncheck anything wrong, fix the details, then save.</div><div id=\"scanList\">";
+function scanReview(entries, opts) {
+  opts = opts || {};
+  scanLastKey = opts.key || "";
+  scanLastFile = opts.file || null;
+
+  var count = entries.length === 1 ? "1 class" : entries.length + " classes";
+  var intro = opts.cached
+    ? "These are the " + count + " from that scan. Uncheck anything wrong, fix the details, then save."
+    : count + " detected. Uncheck anything wrong, fix the details, then save.";
+
+  var html = '<h2>Check what I found</h2><div class="muted">' + intro + "</div>";
+
+  if (opts.cached) {
+    html +=
+      '<div class="scan-again">' +
+        '<div class="i">' +
+          '<b>You scanned this photo on ' + esc(scanWhen(opts.at)) + "</b>" +
+          "<span>Nothing was sent to the AI this time. Rescan if the timetable has changed.</span>" +
+        "</div>" +
+        '<button type="button" id="scanRescan">Rescan</button>' +
+      "</div>";
+  }
+
+  html += '<div id="scanList">';
 
   entries.forEach(function (e, n) {
-    html += '<div class="srow"><div class="shead"><input type="checkbox" class="pick" checked>' +
+    html += '<div class="srow"><div class="shead"><input type="checkbox" class="pick" checked aria-label="Include class ' + (n + 1) + '">' +
       '<span class="sidx">' + (n + 1) + "</span>" +
-      '<input class="sname" value="' + esc(e.subject) + '" placeholder="Subject"></div>' +
+      '<input class="sname" value="' + esc(e.subject) + '" placeholder="Subject" aria-label="Subject"></div>' +
       '<div class="sbody">' +
       '<span class="flab">Type</span><div class="kseg">' +
       ["lecture", "section", "lab"].map(function (k) {
@@ -386,9 +788,9 @@ function scanReview(entries) {
         return '<button type="button" class="dp' + (e.day === idx ? " on" : "") + '" data-d="' + idx + '">' + d + "</button>";
       }).join("") + "</div>" +
       '<div class="sline"><div><span class="flab">Time</span>' +
-      '<input class="stime" type="time" value="' + esc(e.time) + '"></div>' +
+      '<input class="stime" type="time" value="' + esc(e.time) + '" aria-label="Time"></div>' +
       '<div><span class="flab">Place</span>' +
-      '<input class="splace" value="' + esc(e.place) + '" placeholder="Hall 3"></div></div>' +
+      '<input class="splace" value="' + esc(e.place) + '" placeholder="Hall 3" aria-label="Place"></div></div>' +
       "</div></div>";
   });
 
@@ -399,6 +801,18 @@ function scanReview(entries) {
   openModal(html, null);
   document.getElementById("scanSave").onclick = saveScan;
   document.getElementById("scanAgain").onclick = scanTimetable;
+
+  // Read this exact photo again, ignoring the cached result.
+  var rescan = document.getElementById("scanRescan");
+  if (rescan) {
+    rescan.onclick = function () {
+      if (scanLastFile) scanRun(scanLastFile, { rescan: true });
+      else scanTimetable();
+    };
+  }
+
+  // Nothing is saved yet: every way out of this sheet asks first.
+  modalCloseGuard = askBeforeDiscardScan;
 
   // Type / Day act as radio groups; unchecking dims the card so it reads as skipped
   Array.prototype.forEach.call(document.querySelectorAll(".srow"), function (row) {
@@ -416,7 +830,10 @@ function scanReview(entries) {
 }
 
 function saveScan() {
+  // Saving is the finish line, not a discard: don't ask on the way out.
+  modalCloseGuard = null;
   var added = 0, newSubjects = 0;
+  var finalEntries = [];
 
   Array.prototype.forEach.call(document.querySelectorAll(".srow"), function (row) {
     var pick = row.querySelector(".pick");
@@ -430,6 +847,8 @@ function saveScan() {
     var day = dbtn ? parseInt(dbtn.getAttribute("data-d"), 10) : 0;
     var time = row.querySelector(".stime").value || "";
     var place = row.querySelector(".splace").value.trim() || "TBA";
+
+    finalEntries.push({ subject: name, kind: kind, day: day, time: time, place: place });
 
     var sub = state.subjects.filter(function (s) { return s.name.toLowerCase() === name.toLowerCase(); })[0];
     if (!sub) {
@@ -446,6 +865,10 @@ function saveScan() {
     state.lectures.push({ id: uid(), subjectId: sub.id, kind: kind, weekday: day, time: time, place: place });
     added++;
   });
+
+  // Keep the cached result in step with the corrections, so re-picking this
+  // photo shows exactly what was accepted instead of the raw AI answer.
+  if (scanLastKey && finalEntries.length) scanCachePut(scanLastKey, finalEntries, scanLastFile);
 
   save(); render(); closeModal();
   if (!added) { toast("Nothing new to add"); return; }

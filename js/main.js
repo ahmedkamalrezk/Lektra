@@ -1,5 +1,11 @@
 // ===== Buttons + start =====
+// Bumped together with CACHE in sw.js, so an outdated install is easy to spot:
+// Settings -> More shows this number at the bottom.
+var APP_BUILD = "v188";
+
 function render() {
+  // Any render satisfies a deferred one.
+  pendingRender = false;
   // A long-press menu or select-mode bar belongs to the day view; drop them
   // as soon as the user navigates somewhere else.
   if (typeof closeDayMenu === "function") closeDayMenu();
@@ -22,6 +28,7 @@ var composerScrim = document.getElementById("composerScrim");
 function openComposer() {
   document.getElementById("app").classList.add("composing");
   plansInput.placeholder = "Ask...";
+  growPlans();
   if (typeof syncThemeColor === "function") syncThemeColor();
 }
 
@@ -29,8 +36,17 @@ function closeComposer() {
   if (typeof cancelVoice === "function") cancelVoice();
   document.getElementById("app").classList.remove("composing");
   plansInput.placeholder = "What are your plans?";
+  plansInput.style.height = "";   // back to the one-line bar
   if (document.activeElement === plansInput) plansInput.blur();
   if (typeof syncThemeColor === "function") syncThemeColor();
+}
+
+// The plan box is a textarea, not a single-line input: when the text fills the
+// width it wraps and the box grows, instead of the caret sliding out of sight.
+function growPlans() {
+  if (!document.getElementById("app").classList.contains("composing")) return;
+  plansInput.style.height = "auto";
+  plansInput.style.height = plansInput.scrollHeight + "px";
 }
 
 function sendPlan() {
@@ -43,9 +59,11 @@ function sendPlan() {
 }
 
 plansInput.addEventListener("focus", openComposer);
+plansInput.addEventListener("input", growPlans);
 plansInput.onkeydown = function (e) {
   if (e.key === "Escape") { closeComposer(); return; }
-  if (e.key === "Enter" && this.value.trim()) { e.preventDefault(); sendPlan(); }
+  // Enter sends; Shift+Enter inserts a line break.
+  if (e.key === "Enter" && !e.shiftKey && this.value.trim()) { e.preventDefault(); sendPlan(); }
 };
 document.getElementById("composerClose").onclick = closeComposer;
 composerScrim.onclick = closeComposer;
@@ -66,6 +84,7 @@ var SET_ICON = {
   paint: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18 3 3 0 0 0 0-6 3 3 0 0 1 0-6 3 3 0 0 0 0-6z" fill="currentColor" stroke="none"/></svg>',
   month: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.4" width="18" height="16.6" rx="4"/><path d="M7.8 2.6v3.4M16.2 2.6v3.4M3 9.4h18"/><path d="M7.5 13h2M11 13h2M14.5 13h2M7.5 17h2M11 17h2"/></svg>',
   more: '<svg class="mi" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+  install: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="4"/><path d="M12 7.2v7.2"/><path d="M9.2 11.6L12 14.4l2.8-2.8"/></svg>',
   person: '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9.1" r="2.6"/><path d="M6.7 18.1a6.3 6.3 0 0 1 10.6 0"/></svg>'
 };
 
@@ -85,12 +104,12 @@ var DEV_ICON = {
 };
 
 // `back` is true (returns to the main settings) or the page to return to.
-// Sub-pages get both a chevron back button and a close button, like Appearance.
+// Sub-pages get a chevron back button. There is deliberately no close (x)
+// button: the sheet is dismissed by dragging it down or tapping outside.
 function setHead(title, back) {
   return '<div class="shead">' +
     (back ? '<button class="sback plain" data-set="back" data-back="' + (back === true ? "main" : back) + '" aria-label="Back">' + SET_ICON.back + "</button>" : "") +
     "<h2>" + title + "</h2>" +
-    '<button class="sx" data-set="close" aria-label="Close">' + SET_ICON.x + "</button>" +
     "</div>";
 }
 
@@ -102,6 +121,9 @@ var SET_PAGES = {
   main: function () {
     return setHead("Settings") +
       '<div class="menu">' +
+      (typeof installAvailable === "function" && installAvailable()
+        ? '<button class="mrow install-row" data-install="1">' + SET_ICON.install + "<span>Install app</span>" + SET_ICON.chev + "</button>"
+        : "") +
       setRow("appearance", SET_ICON.paint, "Appearance") +
       setRow("month", SET_ICON.month, "Month Options") +
       setRow("lang", SET_ICON.globe, "Voice language") +
@@ -148,7 +170,8 @@ var SET_PAGES = {
       '</div>' +
       '<label>Storage</label>' +
       '<div class="btns" style="margin-top:0"><button id="clearBtn" class="danger">Clear all data</button></div>' +
-      '<div class="muted" style="margin-top:3cqw">Deleting removes every subject, lecture, entry and saved file. This cannot be undone.</div>';
+      '<div class="muted" style="margin-top:3cqw">Deleting removes every subject, lecture, entry and saved file. This cannot be undone.</div>' +
+      '<div class="build">Lektra ' + APP_BUILD + '</div>';
   }
 };
 
@@ -232,14 +255,17 @@ function openSettings() { settingsPage("main"); }
 
 function settingsPage(page) {
   var box = document.getElementById("box");
+  rememberFocus();
   box.className = "box" + (page === "filters" ? " filtersheet" : "");
   box.setAttribute("data-page", page);
+  box.removeAttribute("aria-label");
   box.innerHTML = '<div class="handle"></div>' + (SET_PAGES[page] || SET_PAGES.main)();
   box.scrollTop = 0;
   resetDrag(box);
   dragToClose(box);
   document.getElementById("modal").className = "show" + (page === "filters" ? " filter-mode" : "");
   document.getElementById("modal").onclick = function (e) { if (e.target === this) closeModal(); };
+  prepareDialog(box);
 
   box.querySelectorAll("[data-set]").forEach(function (b) {
     b.onclick = function () {
@@ -252,6 +278,9 @@ function settingsPage(page) {
 
   var scan = box.querySelector("[data-scan]");
   if (scan) scan.onclick = function () { closeModal(); scanTimetable(); };
+
+  var inst = box.querySelector("[data-install]");
+  if (inst) inst.onclick = function () { closeModal(); openInstallFlow(); };
 
   var dev = box.querySelector("[data-dev]");
   if (dev) dev.onclick = openDeveloperSheet;
@@ -350,11 +379,18 @@ function settingsPage(page) {
 function clearAll() {
   state = normalizeState({});
   applyTheme();
+  if (typeof cancelSave === "function") cancelSave();   // don't resurrect the mirror
   try { localStorage.removeItem(STATE_KEY); } catch (e) {}
   var jobs = [idbPut("kv", state, STATE_KEY).catch(function () {})];
   if (typeof idbAll === "function") {
     jobs.push(idbAll("files").then(function (all) {
       return Promise.all(all.map(function (r) { return idbDel("files", r.id); }));
+    }).catch(function () {}));
+    // Scanned-timetable results are derived data, but "clear all" promises to
+    // remove everything. Leaving them behind also meant the next upload of the
+    // same photo skipped the AI call and showed the previous result.
+    jobs.push(idbAll("scans").then(function (all) {
+      return Promise.all(all.map(function (r) { return idbDel("scans", r.key); }));
     }).catch(function () {}));
   }
   return Promise.all(jobs);
@@ -374,8 +410,24 @@ document.getElementById("bSet").onclick = openSettings;
 
 // ===== Service worker (install + offline) =====
 if ("serviceWorker" in navigator) {
+  // A new build installs in the background and takes over the moment it is
+  // ready. Reload once so the open page isn't left running the previous
+  // version — that is what made a fix look like it "didn't work" after an
+  // update. Skip the very first install (there is nothing stale to replace).
+  var swHadController = !!navigator.serviceWorker.controller;
+  var swReloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", function () {
+    if (!swHadController || swReloading) return;
+    // Never yank the page out from under an open sheet or a half-typed plan:
+    // tell them instead, and the next launch picks the new build up.
+    var busy = document.getElementById("app").classList.contains("composing") ||
+      document.getElementById("modal").className.indexOf("show") >= 0;
+    if (busy) { toast("Updated — reopen Lektra to finish"); return; }
+    swReloading = true;
+    window.location.reload();
+  });
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(function () {});
   });
 }
 

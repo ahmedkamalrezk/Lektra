@@ -155,6 +155,73 @@ function accentInk(hex) {
   return lum > 0.6 ? "#111114" : "#fff";
 }
 
+// Accent text needs to stay readable on the app paint. Some theme accents
+// (the default blue on a dark sheet, for example) fall just under WCAG AA at
+// the small sizes used for chips and links, so lighten or darken a copy of the
+// accent until it clears 4.5:1. Surfaces keep the real accent; only text uses
+// this token.
+function colorLum(hex) {
+  var c = parseCssColor(hex);
+  var ch = [c[0], c[1], c[2]].map(function (v) {
+    v = v / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+}
+
+function contrastRatio(a, b) {
+  var x = colorLum(a), y = colorLum(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+function mixHex(a, b, t) {
+  var x = parseCssColor(a), y = parseCssColor(b);
+  function h(n) { return ("0" + Math.round(Math.max(0, Math.min(255, n))).toString(16)).slice(-2); }
+  return "#" + h(x[0] * (1 - t) + y[0] * t) + h(x[1] * (1 - t) + y[1] * t) + h(x[2] * (1 - t) + y[2] * t);
+}
+
+function accentTextAgainst(hex, surfaces) {
+  if (!/^#[0-9a-f]{6}$/i.test(String(hex || ""))) return hex;
+  function ok(c) {
+    for (var i = 0; i < surfaces.length; i++) {
+      if (contrastRatio(c, surfaces[i]) < 4.5) return false;
+    }
+    return true;
+  }
+  if (ok(hex)) return hex;
+  var target = contrastRatio("#000000", surfaces[0]) >= contrastRatio("#ffffff", surfaces[0]) ? "#000000" : "#ffffff";
+  for (var i = 1; i <= 10; i++) {
+    var mixed = mixHex(hex, target, i / 10);
+    if (ok(mixed)) return mixed;
+  }
+  return target;
+}
+
+function accentText(hex, bg) {
+  if (!/^#[0-9a-f]{6}$/i.test(String(hex || ""))) return hex;
+  // Test against the lightest common text surface (a 12% white/black sheen on
+  // the app paint) and the same surface tinted with the accent (chips use
+  // --accent-soft), not the bare background.
+  var surface = mixHex(bg, colorLum(bg) < 0.5 ? "#ffffff" : "#000000", 0.12);
+  return accentTextAgainst(hex, [surface, blendCssColor(hex + "24", surface)]);
+}
+
+// Text sitting on --accent-soft while the composer scrim dims the page behind
+// it (the "Plan today" pill) needs a slightly stronger ink.
+function accentTextOnScrim(hex, bg) {
+  var surface = mixHex(bg, colorLum(bg) < 0.5 ? "#ffffff" : "#000000", 0.12);
+  var scrimmed = blendCssColor(colorLum(bg) < 0.5 ? "rgba(0,0,0,.38)" : "rgba(0,0,0,.1)", surface);
+  return accentTextAgainst(hex, [blendCssColor(hex + "24", scrimmed)]);
+}
+
+// "255,59,48" for a colour, for rgba(var(--cr),.15) in the stylesheet. CSS
+// cannot grow an alpha suffix onto a var() colour — var(--c)26 parses as two
+// tokens, not one 8-digit hex — so tinted surfaces carry this triplet too.
+function rgbTriplet(c) {
+  var p = parseCssColor(c);
+  return Math.round(p[0]) + "," + Math.round(p[1]) + "," + Math.round(p[2]);
+}
+
 // iOS shows the page/body background in the status-bar strip above the web
 // layer. When a sheet or the composer is open the page behind it is dimmed, so
 // match that strip to the dimmed colour instead of leaving a bright band.
@@ -191,9 +258,12 @@ function blendCssColor(fg, bg) {
   return "#" + hex(r) + hex(g) + hex(bl);
 }
 
-function syncThemeColor() {
+// `bgOverride` is the app background the caller just wrote. Reading it back
+// from the computed style would force a full style recalculation, and this runs
+// on every theme change.
+function syncThemeColor(bgOverride) {
   var root = document.documentElement;
-  var appBg = getComputedStyle(root).getPropertyValue("--app-bg").trim() || "#161616";
+  var appBg = bgOverride || (getComputedStyle(root).getPropertyValue("--app-bg").trim() || "#161616");
   var modal = document.getElementById("modal");
   var app = document.getElementById("app");
   var color = appBg;
@@ -229,6 +299,8 @@ function applyTheme() {
   root.setAttribute("data-theme", mode);
   root.style.setProperty("--accent", accent);
   root.style.setProperty("--accent-ink", accentInk(accent));
+  root.style.setProperty("--accent-text", accentText(accent, appBg));
+  root.style.setProperty("--accent-on-scrim", accentTextOnScrim(accent, appBg));
   root.style.setProperty("--accent-soft", accent + "24");
   root.style.setProperty("--app-bg", appBg);
   var app = document.getElementById("app");
@@ -244,7 +316,7 @@ function applyTheme() {
     app.setAttribute("data-dn-pos", s.dayNumPosition || "left");
     app.setAttribute("data-day-color", s.dayColor || "fill");
   }
-  syncThemeColor();
+  syncThemeColor(appBg);
   var cs = document.querySelector('meta[name="color-scheme"]');
   if (cs) cs.setAttribute("content", mode);
   if (typeof refreshAppearance === "function") refreshAppearance();
@@ -404,13 +476,47 @@ function normalizeState(s) {
   return s;
 }
 
-// Persist: localStorage immediately (cheap + instant), IndexedDB for the real copy.
+// Persist: the whole state is serialised on every save, so a burst of taps
+// (or every keystroke in a note) used to pay for a JSON.stringify + a blocking
+// localStorage write each time. Writes are coalesced and flushed when the page
+// goes away, so nothing can be lost to a reload.
+var saveTimer = null;
+
 function save() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(flushSave, 120);
+}
+
+function flushSave() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch (e) {}
   if (typeof idbPut === "function") {
     idbPut("kv", state, STATE_KEY).catch(function () {});
   }
 }
+
+if (window.addEventListener) {
+  window.addEventListener("pagehide", flushSave);
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) flushSave();
+  });
+}
+
+// Drop a queued write (used when the app is about to wipe the mirror).
+function cancelSave() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+}
+
+// ===== Deferred render =====
+// Rebuilding the calendar is the expensive half of a settings change, and every
+// sheet that owns one of those settings sits *on top of* the calendar. Tapping
+// through Appearance / Indicators / Month Options now repaints CSS (theme vars
+// and #app data attributes) and the sheet's own controls only; the real rebuild
+// waits until the sheet closes, so nobody pays to redraw what they cannot see.
+var pendingRender = false;
+
+function requestRender() { pendingRender = true; }
+function flushPendingRender() { if (pendingRender) render(); }
 
 // Load the authoritative copy from IndexedDB at startup.
 function loadStateFromDB() {
@@ -441,7 +547,17 @@ function refreshToday() {
   return true;
 }
 
-function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+// Escape for both element text and quoted attributes. Building a DOM node per
+// call was allocating (and discarding) an element for every label on every
+// render, and textContent only escapes <, > and & — never quotes, which let a
+// subject name or an AI-read value break out of value="..." / href="...".
+function esc(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" :
+      c === '"' ? "&quot;" : "&#39;";
+  });
+}
 var toastTimer = null;
 function toast(msg) {
   var t = document.getElementById("toast");
@@ -468,7 +584,7 @@ function colorOf(id) {
   // Unknown calendars still follow the global Theme / Single Color choice.
   if (state.settings && state.settings.indMode === "theme") return accentHex();
   if (state.settings && state.settings.indMode === "single") return state.settings.indSingle || "#ff375f";
-  return "#888";
+  return "#888888";   // full 6-digit hex: the stylesheet derives tint shades from --cr
 }
 
 // Folder icon for subject rows and search results - same stroke style as the
