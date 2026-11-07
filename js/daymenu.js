@@ -147,20 +147,23 @@ function openDayMenu(el) {
   menu.addEventListener("selectstart", function (e) { e.preventDefault(); });
 
   var card = menu.querySelector(".dm-card");
-  var ar = app.getBoundingClientRect();
+  var mr = menu.getBoundingClientRect();
   var r = el.getBoundingClientRect();
   var h = card.offsetHeight;
-  var maxTop = Math.max(10, app.clientHeight - h - 10);
-  var top = r.bottom - ar.top + 8;
+  var maxTop = Math.max(10, mr.height - h - 10);
+  var top = r.bottom - mr.top + 8;
   // Flip above the card when there is no room below, then clamp so a card
   // that is partly scrolled out of view can never push the menu off-screen.
-  if (top > maxTop) top = r.top - ar.top - h - 8;
+  if (top > maxTop) top = r.top - mr.top - h - 8;
   top = Math.max(10, Math.min(top, maxTop));
   card.style.top = top + "px";
 
   menu.addEventListener("click", dmClick);
   document.addEventListener("keydown", dmKeydown);
-  requestAnimationFrame(function () { menu.classList.add("show"); });
+  requestAnimationFrame(function () {
+    menu.classList.add("show");
+    if (typeof syncThemeColor === "function") syncThemeColor();
+  });
 }
 
 function dmClick(e) {
@@ -194,6 +197,7 @@ function closeDayMenu() {
   document.removeEventListener("keydown", dmKeydown);
   dmCurrent = null;
   dmClearSelection();
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 
 function dmDuplicate() {

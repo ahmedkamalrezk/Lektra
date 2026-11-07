@@ -9,13 +9,16 @@
 <meta name="color-scheme" content="dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- No apple-mobile-web-app-status-bar-style on purpose. Since iOS 26.1 the
+     black-translucent value renders an opaque white bar with a 0px top inset
+     (WebKit 301994/317153). Leaving it out makes iOS colour the bar from the
+     page and keeps it flush with the app in both themes. -->
 <meta name="apple-mobile-web-app-title" content="Lektra">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="assets/icon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 
-<link rel="stylesheet" href="css/style.css?v=v194">
+<link rel="stylesheet" href="css/style.css?v=v195">
 </head>
 <body>
 <div id="app"><div id="screen">
@@ -82,21 +85,21 @@
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 </div>
 
-<script src="js/db.js?v=v194"></script>
-<script src="js/state.js?v=v194"></script>
-<script src="js/appearance.js?v=v194"></script>
-<script src="js/month.js?v=v194"></script>
-<script src="js/modal.js?v=v194"></script>
-<script src="js/calendar.js?v=v194"></script>
-<script src="js/daymenu.js?v=v194"></script>
-<script src="js/subjects.js?v=v194"></script>
-<script src="js/search.js?v=v194"></script>
-<script src="js/voice.js?v=v194"></script>
-<script src="js/chat.js?v=v194"></script>
-<script src="js/reminders.js?v=v194"></script>
-<script src="js/scan.js?v=v194"></script>
-<script src="js/camera.js?v=v194"></script>
-<script src="js/install.js?v=v194"></script>
-<script src="js/main.js?v=v194"></script>
+<script src="js/db.js?v=v195"></script>
+<script src="js/state.js?v=v195"></script>
+<script src="js/appearance.js?v=v195"></script>
+<script src="js/month.js?v=v195"></script>
+<script src="js/modal.js?v=v195"></script>
+<script src="js/calendar.js?v=v195"></script>
+<script src="js/daymenu.js?v=v195"></script>
+<script src="js/subjects.js?v=v195"></script>
+<script src="js/search.js?v=v195"></script>
+<script src="js/voice.js?v=v195"></script>
+<script src="js/chat.js?v=v195"></script>
+<script src="js/reminders.js?v=v195"></script>
+<script src="js/scan.js?v=v195"></script>
+<script src="js/camera.js?v=v195"></script>
+<script src="js/install.js?v=v195"></script>
+<script src="js/main.js?v=v195"></script>
 </body>
 </html>

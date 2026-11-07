@@ -272,6 +272,11 @@ function syncThemeColor(bgOverride) {
   } else if (app && app.classList.contains("chatting")) {
     var chat = document.getElementById("chat");
     if (chat) color = blendCssColor(getComputedStyle(chat).backgroundColor, appBg);
+  } else if (document.querySelector("#dayMenu.show")) {
+    // The long-press menu dims the calendar; tint the status-bar strip with the
+    // same scrim so it cannot show up as a bright band above a darker app.
+    var dmScrim = document.querySelector("#dayMenu .dm-scrim");
+    if (dmScrim) color = blendCssColor(getComputedStyle(dmScrim).backgroundColor, appBg);
   } else if (app && app.classList.contains("composing")) {
     var scrim = document.getElementById("composerScrim");
     if (scrim) color = blendCssColor(getComputedStyle(scrim).backgroundColor, appBg);

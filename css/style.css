@@ -178,7 +178,6 @@
   --chat-move-ink:#e0244a;
 }
 html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:var(--app-bg);-webkit-text-size-adjust:100%;touch-action:manipulation}
-@supports (height:100dvh){html{height:100dvh}}
 *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",Roboto,sans-serif;scrollbar-width:none;-ms-overflow-style:none}
 *::-webkit-scrollbar{display:none;width:0;height:0}
 html{scroll-padding-top:var(--safe-top)}
@@ -541,7 +540,11 @@ button.cam-thumb{cursor:pointer;-webkit-tap-highlight-color:transparent}
 #main input,#main textarea,#main [contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 #dayMenu{position:absolute;inset:0;z-index:12;opacity:0;pointer-events:none;transition:opacity .16s ease}
 #dayMenu.show{opacity:1;pointer-events:auto}
-.dm-scrim{position:absolute;inset:0;background:var(--scrim);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+/* Flat dim only: a backdrop blur turned the whole calendar into an unreadable
+   wash on phones, and the menu is opaque enough to stand on its own. Fixed
+   rather than absolute so iOS/Safari samples this layer for the status bar,
+   which keeps that strip the same tint as the dimmed page. */
+.dm-scrim{position:fixed;inset:0;background:var(--scrim);-webkit-backdrop-filter:none;backdrop-filter:none}
 /* menu-solid is 97% opaque: a 40px backdrop blur behind it was invisible. */
 .dm-card{position:absolute;right:5cqw;transform:scale(.95);width:60cqw;max-height:76%;overflow-y:auto;overscroll-behavior:contain;padding:1.4cqw;border-radius:5.4cqw;border:1px solid var(--f16);background:var(--menu-solid);box-shadow:0 4cqw 14cqw rgba(0,0,0,.5),inset 0 1px 0 var(--f12);color:var(--t1);transform-origin:top right;transition:transform .18s cubic-bezier(.2,.9,.25,1)}
 #dayMenu.show .dm-card{transform:scale(1)}
