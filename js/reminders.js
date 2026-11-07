@@ -52,18 +52,39 @@ function leadsFor(kind) {
 }
 
 // ===== when things actually happen =====
+// "HH:MM" -> [hours, minutes], or null when the stored value is not a real
+// clock time. `setHours(25, 99)` silently rolls into the next day, which would
+// fire a reminder on the wrong date.
+function remindClock(t) {
+  if (typeof t !== "string") return null;
+  var p = t.split(":");
+  if (p.length < 2) return null;
+  var h = +p[0], m = +p[1];
+  if (!isFinite(h) || !isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return [h, m];
+}
+
 function eventWhen(e) {
   var p = String(e.date).split("-");
-  var d = new Date(+p[0], +p[1] - 1, +p[2]);
-  if (e.time) { var t = String(e.time).split(":"); d.setHours(+t[0] || 0, +t[1] || 0, 0, 0); }
+  var y = +p[0], mo = +p[1], day = +p[2];
+  // `new Date(2026, 1, 31)` does not fail: it rolls forward to 3 March. Reminders
+  // for a date that does not exist would then fire on a different day, so check
+  // the components survived the round trip.
+  if (!isFinite(y) || !isFinite(mo) || !isFinite(day)) return null;
+  if (mo < 1 || mo > 12 || day < 1 || day > 31) return null;
+  var d = new Date(y, mo - 1, day);
+  if (isNaN(d.getTime())) return null;
+  if (d.getFullYear() !== y || d.getMonth() !== mo - 1 || d.getDate() !== day) return null;
+  var hm = remindClock(e.time);
+  if (hm) d.setHours(hm[0], hm[1], 0, 0);
   else d.setHours(9, 0, 0, 0);   // no time given: assume 09:00
   return d;
 }
 
 function lectureWhenOn(l, day) {
   var d = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-  var t = String(l.time || "09:00").split(":");
-  d.setHours(+t[0] || 0, +t[1] || 0, 0, 0);
+  var hm = remindClock(l.time) || [9, 0];
+  d.setHours(hm[0], hm[1], 0, 0);
   return d;
 }
 
@@ -71,7 +92,7 @@ function lectureWhenOn(l, day) {
 function eachOccurrence(from, to, cb) {
   state.events.forEach(function (e) {
     var w = eventWhen(e);
-    if (w >= from && w <= to) cb(e, e.kind, w);
+    if (w && w >= from && w <= to) cb(e, e.kind, w);
   });
 
   var day = new Date(from.getFullYear(), from.getMonth(), from.getDate());
@@ -214,6 +235,26 @@ function catchUpReminders() {
   toast(missed.length + " missed reminder" + (missed.length > 1 ? "s" : ""));
 }
 
+// Older Safari exposes Notification.requestPermission only as a callback API
+// and returns undefined. The old code wrapped that undefined in a resolved
+// promise and always reported "Not allowed" even when the user said yes.
+function requestNotifyPermission() {
+  return new Promise(function (resolve) {
+    var result;
+    try {
+      result = Notification.requestPermission(function (p) { resolve(p || "default"); });
+    } catch (e) {
+      resolve("denied");
+      return;
+    }
+    if (result && typeof result.then === "function") {
+      result.then(function (p) { resolve(p || "default"); }, function () { resolve("denied"); });
+    } else if (result === "granted" || result === "denied" || result === "default") {
+      resolve(result);
+    }
+  });
+}
+
 // ===== enable / disable =====
 function enableReminders() {
   if (!notifySupported()) { toast("This browser can't show notifications"); return Promise.resolve(false); }
@@ -221,15 +262,10 @@ function enableReminders() {
     toast("Notifications are blocked in your browser settings");
     return Promise.resolve(false);
   }
-  var ask;
-  try {
-    ask = Notification.permission === "granted"
-      ? "granted"
-      : Notification.requestPermission();
-  } catch (e) {
-    ask = "denied";
-  }
-  return Promise.resolve(ask).then(function (p) {
+  var ask = Notification.permission === "granted"
+    ? Promise.resolve("granted")
+    : requestNotifyPermission();
+  return ask.then(function (p) {
     if (p !== "granted") { toast("Not allowed — reminders stay off"); return false; }
     ensureReminders().enabled = true; save();
     toast("Reminders on ✓");

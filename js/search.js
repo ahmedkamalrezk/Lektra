@@ -70,6 +70,9 @@ function openSearch() {
     }
     if (type !== "cls") {
       state.events.forEach(function (e) {
+        // A stored entry should always have a date after normalisation, but the
+        // search must never throw on a stale record loaded mid-session.
+        if (!e.date) return;
         var n = subjectName(e.subjectId), p = e.date.split("-");
         if (!hit(n + " " + kindLabel(e.kind) + " " + (e.note || "") + " " + e.date)) return;
         out.push({

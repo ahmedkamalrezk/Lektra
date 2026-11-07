@@ -2,9 +2,14 @@
 var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 var rec = null;
 
-function digits(text) { return text.replace(/[٠-٩]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }); }
+// Arabic-Indic (٠-٩) and Persian (۰-۹) digits both become Western digits.
+function digits(text) {
+  return String(text == null ? "" : text)
+    .replace(/[\u0660-\u0669]/g, function (d) { return String.fromCharCode(d.charCodeAt(0) - 0x0660 + 48); })
+    .replace(/[\u06F0-\u06F9]/g, function (d) { return String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 48); });
+}
 function clean(text) {
-  var t = digits(text.toLowerCase());
+  var t = digits(text).toLowerCase();
   return t.replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي");
 }
 function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
@@ -20,6 +25,9 @@ var MONTH_WORDS = [
 
 // weekday number (0 = Sunday) or null
 function findDay(t) {
+  // "بعد بكره" (day after tomorrow) contains "بكره"; check the longer phrase
+  // first or every such sentence lands on tomorrow instead of two days out.
+  if (/بعد بكره|بعد بكرا|day after tomorrow/.test(t)) return (today.getDay() + 2) % 7;
   for (var i = 0; i < 7; i++)
     for (var j = 0; j < DAY_WORDS[i].length; j++) if (t.indexOf(DAY_WORDS[i][j]) !== -1) return i;
   if (/بكره|بكرا|tomorrow/.test(t)) return (today.getDay() + 1) % 7;
@@ -32,6 +40,17 @@ function monthPattern(name) {
   // wrap plain English month names in word boundaries so "may" can't match "maybe"
   return /^[a-z]+$/.test(name) ? "\\b" + name + "\\b" : name;
 }
+
+// A helper that rejects rolled-over dates: `new Date(2026, 1, 31)` becomes
+// March 3, which used to turn an impossible spoken date into a silent entry on
+// the wrong day.
+function validMonthDate(year, monthIndex, day) {
+  if (!(day >= 1 && day <= 31) || !(monthIndex >= 0 && monthIndex <= 11)) return null;
+  var d = new Date(year, monthIndex, day);
+  if (d.getFullYear() !== year || d.getMonth() !== monthIndex || d.getDate() !== day) return null;
+  return d;
+}
+
 function findDate(t) {
   var base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   for (var mo = 0; mo < 12; mo++) {
@@ -40,17 +59,18 @@ function findDate(t) {
       var pat = monthPattern(name);
       var m = t.match(new RegExp("(\\d{1,2})\\s*(?:من|of)?\\s*" + pat)) || t.match(new RegExp(pat + "\\s*(\\d{1,2})"));
       if (m) {
-        var d = new Date(base.getFullYear(), mo, +m[1]);
-        if (d < base) d = new Date(base.getFullYear() + 1, mo, +m[1]);
-        return d;
+        var d = validMonthDate(base.getFullYear(), mo, +m[1]);
+        if (d && d < base) d = validMonthDate(base.getFullYear() + 1, mo, +m[1]);
+        if (d) return d;
+        continue;
       }
     }
   }
   var s = t.match(/(\d{1,2})\/(\d{1,2})/);
   if (s) {
-    var d2 = new Date(base.getFullYear(), +s[2] - 1, +s[1]);
-    if (d2 < base) d2 = new Date(base.getFullYear() + 1, +s[2] - 1, +s[1]);
-    return d2;
+    var d2 = validMonthDate(base.getFullYear(), +s[2] - 1, +s[1]);
+    if (d2 && d2 < base) d2 = validMonthDate(base.getFullYear() + 1, +s[2] - 1, +s[1]);
+    if (d2) return d2;
   }
   if (/بعد بكره|بعد بكرا|day after tomorrow/.test(t)) return addDays(base, 2);
   if (/بكره|بكرا|tomorrow/.test(t)) return addDays(base, 1);
@@ -70,7 +90,7 @@ function findTime(t) {
     t.match(/(?:^|\s)(\d{1,2})(?::(\d{2}))?\s*(?:am|pm|a\.m|p\.m|صباحا|الصبح|مساء|بالليل|العصر|الضهر|الظهر|ظهر)/);
   if (!m) return null;
   var h = +m[1], min = m[2] ? +m[2] : 0;
-  if (h > 23) return null;
+  if (h > 23 || min > 59) return null;
   // "10 ونص" / "10 و نص" belongs to the time immediately before it. Looking
   // for "ونص" anywhere in the sentence used to put "ونص" into the subject and
   // could also change an explicit 10:15 into 10:30.
@@ -82,13 +102,14 @@ function findTime(t) {
   var pm = /مساء|بالليل|العصر|العشا|بعد الظهر|الضهر|الظهر|ظهر|\bpm\b|p\.m/.test(t);
   var am = /صباحا|الصبح|\bam\b|a\.m/.test(t);
   if (pm && h < 12) h += 12;
-  else if (!am && h >= 1 && h <= 6) h += 12; // a lecture at 3 means 3 PM
+  else if (am && h === 12) h = 0;                 // 12 AM is midnight, not noon
+  else if (!am && !pm && h >= 1 && h <= 6) h += 12; // a lecture at 3 means 3 PM
   return pad(h) + ":" + pad(min);
 }
 
 function findSubject(t) {
   var best = null;
-  state.subjects.forEach(function (s) {
+  (state.subjects || []).forEach(function (s) {
     var name = clean(s.name).trim();
     if (name && t.indexOf(name) !== -1 && (!best || name.length > clean(best.name).length)) best = s;
   });
@@ -289,7 +310,11 @@ function handlePhrase(text, icon) {
   var entries = parsePhrase(text, icon);
   if (!entries.length) { addLecture(today.getDay()); return; }
   var pre = entries[0];
-  var dow = pre.weekday != null ? pre.weekday : new Date(pre.date + "T00:00:00").getDay();
+  var dow = pre.weekday;
+  if (dow == null) {
+    var d = new Date(String(pre.date || "") + "T00:00:00");
+    dow = isNaN(d.getTime()) ? today.getDay() : d.getDay();
+  }
   addLecture(dow, pre);
 }
 
@@ -379,14 +404,16 @@ function listen() {
   r.onresult = function (e) {
     var t = "";
     for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-    heard = t; input.value = t;
+    heard = t;
+    if (input) input.value = t;
   };
   r.onerror = function (e) {
     if (e.error === "aborted") return;
     failed = true; toast(VOICE_ERR[e.error] || "Voice error: " + e.error);
   };
   r.onend = function () {
-    rec = null; setListening(false); input.value = "";
+    rec = null; setListening(false);
+    if (input) input.value = "";
     if (failed) return;
     if (heard.trim()) {
       if (typeof closeComposer === "function") closeComposer();

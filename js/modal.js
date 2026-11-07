@@ -119,6 +119,9 @@ function closeModal() {
   // A pending AI scan must not reopen the sheet after the user closed it.
   if (typeof cancelScan === "function") cancelScan();
   var m = document.getElementById("modal");
+  // The shell always contains #modal, but a close fired during teardown should
+  // not throw on a page where it has already been removed.
+  if (!m) return;
   m.className = "";
   var ov = m.querySelector(".box.overlay");
   if (ov) ov.remove();

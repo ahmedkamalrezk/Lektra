@@ -301,7 +301,10 @@ function applyTheme() {
   root.style.setProperty("--accent-ink", accentInk(accent));
   root.style.setProperty("--accent-text", accentText(accent, appBg));
   root.style.setProperty("--accent-on-scrim", accentTextOnScrim(accent, appBg));
-  root.style.setProperty("--accent-soft", accent + "24");
+  // CSS cannot grow an alpha suffix onto a var() colour, so the tint is stored
+  // as an 8-digit hex. Guard the accent first: a 3-digit or malformed value
+  // would otherwise produce an invalid colour such as "#0af24".
+  root.style.setProperty("--accent-soft", /^#[0-9a-f]{6}$/i.test(accent) ? accent + "24" : "#0a84ff24");
   root.style.setProperty("--app-bg", appBg);
   var app = document.getElementById("app");
   if (app) {
@@ -334,6 +337,10 @@ if (window.matchMedia) {
 // Default "remind me this many minutes before" per group (see js/reminders.js)
 var REMIND_DEFAULT_LEAD = { classes: 10, quiz: 1440, deadline: 4320, exam: 1440 };
 
+// Known entry kinds. Declared before normalizeState() runs so a damaged backup
+// cannot introduce a kind the rest of the app has never heard of.
+var VALID_KINDS = { lecture: 1, section: 1, lab: 1, quiz: 1, deadline: 1, midterm: 1, final: 1 };
+
 var STATE_KEY = "campus";
 
 // ===== State =====
@@ -352,49 +359,172 @@ applyTheme();                    // paint the saved theme before the first rende
 if (window.MutationObserver) {
   var modalWatch = document.getElementById("modal");
   if (modalWatch) {
-    new MutationObserver(syncThemeColor).observe(modalWatch, {
+    // Wrap it: MutationObserver passes (records, observer) as arguments, and
+    // syncThemeColor treats its first argument as the background colour.
+    new MutationObserver(function () { syncThemeColor(); }).observe(modalWatch, {
       attributes: true,
       attributeFilter: ["class"]
     });
   }
 }
 
-// Make sure a state object loaded from disk/storage always has the shape the app expects.
-function normalizeState(s) {
-  if (!s || typeof s !== "object") s = {};
-  if (!Array.isArray(s.subjects)) s.subjects = [];
-  if (!Array.isArray(s.lectures)) s.lectures = [];
-  if (!Array.isArray(s.events)) s.events = [];
-  // A hand-edited or damaged backup should not crash the first render.
-  s.subjects = s.subjects.filter(function (sub) { return sub && typeof sub === "object"; });
-  s.lectures = s.lectures.filter(function (l) { return l && typeof l === "object"; });
-  s.events = s.events.filter(function (e) { return e && typeof e === "object"; });
-  if (s.lang !== "en" && s.lang !== "ar") s.lang = "ar";
-  s.version = 2;
-  s.subjects.forEach(function (sub) {
-    if (!Array.isArray(sub.files)) sub.files = [];
+// ===== Stored-value helpers =====
+// The app is offline-first: the state it boots from can come from localStorage,
+// IndexedDB or a hand-edited JSON backup. Everything is normalised before the
+// first render, so a damaged record can never reach the calendar as `undefined`.
+var SAVE_DEBOUNCE_MS = 120;
+
+function isPlainObject(v) {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function copyObject(src) {
+  var out = {};
+  if (!isPlainObject(src)) return out;
+  Object.keys(src).forEach(function (k) { out[k] = src[k]; });
+  return out;
+}
+
+// "9:5" / "09:05" -> "09:05"; anything that is not a real clock time -> "".
+function normStoredTime(t) {
+  if (t == null || t === "") return "";
+  var m = String(t).trim().match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!m) return "";
+  var h = +m[1], mi = +m[2];
+  if (h > 23 || mi > 59) return "";
+  return pad(h) + ":" + pad(mi);
+}
+
+// Keep only real calendar dates. `new Date(2026, 1, 31)` silently rolls into
+// March, so verify the components after construction instead of trusting it.
+function normStoredDate(d) {
+  if (typeof d !== "string") return "";
+  var m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  var y = +m[1], mo = +m[2] - 1, da = +m[3];
+  if (y < 1900 || mo < 0 || mo > 11 || da < 1) return "";
+  var dt = new Date(y, mo, da);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo || dt.getDate() !== da) return "";
+  return d;
+}
+
+function normStoredWeekday(v) {
+  var n = typeof v === "number" ? v : parseInt(v, 10);
+  if (!isFinite(n) || Math.floor(n) !== n || n < 0 || n > 6) return null;
+  return n;
+}
+
+function normStoredPriority(v) {
+  return v === "low" || v === "medium" || v === "high" ? v : "";
+}
+
+// Saved data may carry a full locale ("ar-EG", "en-US"); the app only needs the
+// language half. Anything unknown falls back to Arabic, the original default.
+function normStoredLang(v) {
+  return String(v == null ? "" : v).toLowerCase().indexOf("en") === 0 ? "en" : "ar";
+}
+
+// Make sure a state object loaded from disk/storage always has the shape the app
+// expects. Returns a new object; the caller's copy (a parsed backup, say) is
+// never mutated, which keeps the normaliser safe to call more than once.
+function normalizeState(input) {
+  var src = isPlainObject(input) ? input : {};
+  var s = copyObject(src);
+
+  // ---- subjects and their file metadata ----
+  s.subjects = (Array.isArray(src.subjects) ? src.subjects : []).filter(isPlainObject).map(function (sub) {
+    var o = copyObject(sub);
+    o.id = typeof o.id === "string" && o.id ? o.id : uid();
+    o.name = o.name == null ? "" : String(o.name);
+    o.files = (Array.isArray(o.files) ? o.files : []).filter(isPlainObject).map(function (f) {
+      var fo = copyObject(f);
+      if (typeof fo.id !== "string" || !fo.id) return null;   // metadata without a blob id is useless
+      fo.name = fo.name == null ? "" : String(fo.name);
+      fo.size = typeof fo.size === "number" && isFinite(fo.size) && fo.size >= 0 ? fo.size : 0;
+      fo.type = typeof fo.type === "string" ? fo.type : "";
+      return fo;
+    }).filter(Boolean);
+    return o;
+  });
+  // Two subjects sharing an id would make one of them unreachable; keep the first.
+  var seenSubjects = {};
+  s.subjects = s.subjects.filter(function (sub) {
+    if (seenSubjects[sub.id]) return false;
+    seenSubjects[sub.id] = true;
+    return true;
   });
 
+  // ---- weekly classes ----
+  s.lectures = (Array.isArray(src.lectures) ? src.lectures : []).filter(isPlainObject).map(function (l) {
+    var o = copyObject(l);
+    o.id = typeof o.id === "string" && o.id ? o.id : uid();
+    o.subjectId = typeof o.subjectId === "string" ? o.subjectId : "";
+    o.kind = Object.prototype.hasOwnProperty.call(VALID_KINDS, o.kind) ? o.kind : "lecture";
+    var wd = normStoredWeekday(o.weekday);
+    // A weekly class without a usable weekday used to poison the month counts
+    // with NaN and never appear at all. File it on Sunday so it stays editable.
+    o.weekday = wd === null ? 0 : wd;
+    o.time = normStoredTime(o.time);
+    o.place = o.place == null ? "" : String(o.place);
+    var lPrio = normStoredPriority(o.priority);
+    if (lPrio) o.priority = lPrio; else delete o.priority;
+    return o;
+  });
+  // A duplicate id makes one record impossible to edit or delete on its own.
+  var seenLectures = {};
+  s.lectures = s.lectures.filter(function (l) {
+    if (seenLectures[l.id]) return false;
+    seenLectures[l.id] = true;
+    return true;
+  });
+
+  // ---- one-date entries ----
+  s.events = (Array.isArray(src.events) ? src.events : []).filter(isPlainObject).map(function (e) {
+    var o = copyObject(e);
+    o.id = typeof o.id === "string" && o.id ? o.id : uid();
+    o.subjectId = typeof o.subjectId === "string" ? o.subjectId : "";
+    o.kind = Object.prototype.hasOwnProperty.call(VALID_KINDS, o.kind) ? o.kind : "quiz";
+    o.date = normStoredDate(o.date);
+    o.time = normStoredTime(o.time);
+    o.note = o.note == null ? "" : String(o.note);
+    var ePrio = normStoredPriority(o.priority);
+    if (ePrio) o.priority = ePrio; else delete o.priority;
+    return o;
+  }).filter(function (e) { return !!e.date; });   // an entry with no date cannot be placed
+  var seenEvents = {};
+  s.events = s.events.filter(function (e) {
+    if (seenEvents[e.id]) return false;
+    seenEvents[e.id] = true;
+    return true;
+  });
+
+  s.lang = normStoredLang(src.lang);
+  s.version = 2;
+
   // reminders: enabled flag, per-group lead times, and what we've already fired
-  if (!s.reminders || typeof s.reminders !== "object") s.reminders = {};
+  s.reminders = isPlainObject(src.reminders) ? copyObject(src.reminders) : {};
   var r = s.reminders;
   if (typeof r.enabled !== "boolean") r.enabled = false;
-  if (!r.lead || typeof r.lead !== "object") r.lead = {};
+  r.lead = isPlainObject(r.lead) ? copyObject(r.lead) : {};
   Object.keys(REMIND_DEFAULT_LEAD).forEach(function (k) {
     if (typeof r.lead[k] !== "number" || !isFinite(r.lead[k]) || r.lead[k] < 0) {
       r.lead[k] = REMIND_DEFAULT_LEAD[k];
     }
   });
-  if (!r.fired || typeof r.fired !== "object") r.fired = {};
+  r.fired = isPlainObject(r.fired) ? copyObject(r.fired) : {};
+  Object.keys(r.fired).forEach(function (k) {
+    if (typeof r.fired[k] !== "number" || !isFinite(r.fired[k])) delete r.fired[k];
+  });
 
   // appearance: paint mode, accent, preset and calendar indicator settings
-  if (!s.settings || typeof s.settings !== "object") s.settings = {};
+  s.settings = isPlainObject(src.settings) ? copyObject(src.settings) : {};
   var a = s.settings;
   if (a.theme !== "light" && a.theme !== "dark" && a.theme !== "system") a.theme = "system";
   if (typeof a.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(a.accent)) a.accent = ACCENTS[0];
+  a.accent = a.accent.toLowerCase();
   if (typeof a.preset !== "string") a.preset = "classic";
   // An empty preset with the default blue accent is just Classic.
-  if (a.preset === "" && a.accent.toLowerCase() === THEMES[0].accent.toLowerCase()) a.preset = "classic";
+  if (a.preset === "" && a.accent === THEMES[0].accent.toLowerCase()) a.preset = "classic";
   // Older builds called the four event shapes rounded / pill / block / mosaic.
   if (a.indStyle === "rounded") a.indStyle = "bars";
   else if (a.indStyle === "pill") a.indStyle = "pills";
@@ -420,28 +550,47 @@ function normalizeState(s) {
   // old frame toggle is now part of the Fill style.
   delete a.dayShape;
   delete a.dayFrame;
-  if (!Array.isArray(a.hidden)) a.hidden = [];
+
+  // User-made themes. Clone them before trimming so the source object is intact.
   if (!Array.isArray(a.custom)) a.custom = [];
-  a.custom = a.custom.filter(function (c) {
-    return c && typeof c.id === "string" && typeof c.name === "string" &&
-      typeof c.accent === "string" && /^#[0-9a-f]{6}$/i.test(c.accent);
-  });
+  var seenCustom = {};
+  a.custom = a.custom.filter(isPlainObject).map(function (c) {
+    var o = copyObject(c);
+    if (typeof o.id !== "string" || !o.id || typeof o.name !== "string") return null;
+    if (typeof o.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(o.accent)) return null;
+    o.name = o.name.slice(0, 18);
+    o.accent = o.accent.toLowerCase();
+    if (typeof o.bg !== "string" || !/^#[0-9a-f]{6}$/i.test(o.bg)) delete o.bg;
+    if (o.mode !== "light" && o.mode !== "dark") o.mode = null;
+    if (seenCustom[o.id]) return null;
+    seenCustom[o.id] = true;
+    return o;
+  }).filter(Boolean);
+  // A preset pointing at a deleted custom theme would show "Custom" forever.
+  if (a.preset !== "classic") {
+    var presetOk = false;
+    for (var pi = 0; pi < THEMES.length && !presetOk; pi++) if (THEMES[pi].id === a.preset) presetOk = true;
+    for (var pj = 0; pj < a.custom.length && !presetOk; pj++) if (a.custom[pj].id === a.preset) presetOk = true;
+    if (!presetOk) a.preset = "classic";
+  }
 
   // indicator colour mode: per-calendar set, the theme accent, or one colour
   if (IND_MODES.indexOf(a.indMode) < 0) a.indMode = "calendars";
   if (typeof a.indSet !== "string") a.indSet = "";
   if (typeof a.indSingle !== "string" || !/^#[0-9a-f]{6}$/i.test(a.indSingle)) a.indSingle = "#ff375f";
   a.indSingle = a.indSingle.toLowerCase();
-  if (!Array.isArray(a.indSets)) a.indSets = [];
-  a.indSets = a.indSets.filter(function (c) {
-    return c && typeof c.id === "string" && typeof c.name === "string" && Array.isArray(c.colors);
-  }).map(function (c) {
-    c.name = String(c.name).slice(0, 18);
-    c.colors = c.colors.filter(function (col) {
+  var seenSets = {};
+  a.indSets = (Array.isArray(a.indSets) ? a.indSets : []).filter(isPlainObject).map(function (c) {
+    var o = copyObject(c);
+    if (typeof o.id !== "string" || !o.id) return null;
+    o.name = String(o.name == null ? "" : o.name).slice(0, 18);
+    o.colors = (Array.isArray(o.colors) ? o.colors : []).filter(function (col) {
       return typeof col === "string" && /^#[0-9a-f]{6}$/i.test(col);
     }).map(function (col) { return col.toLowerCase(); }).slice(0, 12);
-    return c;
-  }).filter(function (c) { return c.colors.length > 0; });
+    if (!o.colors.length || seenSets[o.id]) return null;
+    seenSets[o.id] = true;
+    return o;
+  }).filter(Boolean);
   var knownSet = a.indSet === "";
   if (!knownSet) {
     for (var si = 0; si < IND_SETS.length && !knownSet; si++) if (IND_SETS[si].id === a.indSet) knownSet = true;
@@ -449,28 +598,43 @@ function normalizeState(s) {
   }
   if (!knownSet) a.indSet = "";
 
-  // Day view: list / notes, plus an optional note for each day.
+  // Day view: list / notes, plus an optional note for each day. Only real dates
+  // with string text survive; anything else is a stale or hand-edited key.
   if (a.dayView !== "list" && a.dayView !== "notes") a.dayView = "list";
-  if (!a.dayNotes || typeof a.dayNotes !== "object") a.dayNotes = {};
+  a.dayNotes = isPlainObject(a.dayNotes) ? copyObject(a.dayNotes) : {};
+  Object.keys(a.dayNotes).forEach(function (k) {
+    if (!normStoredDate(k) || typeof a.dayNotes[k] !== "string") delete a.dayNotes[k];
+  });
 
   // Day filters: the calendars (subjects) and lists focused in the day view.
   // A fresh state starts with the Reminders list selected. A cleared filter is
   // stored as an empty list, so only add the default when the object is absent.
-  if (!a.dayFilters || typeof a.dayFilters !== "object") {
-    a.dayFilters = { calendars: [], lists: ["reminders"] };
-  }
+  a.dayFilters = isPlainObject(a.dayFilters) ? copyObject(a.dayFilters) : { calendars: [], lists: ["reminders"] };
   if (!Array.isArray(a.dayFilters.calendars)) a.dayFilters.calendars = [];
   if (!Array.isArray(a.dayFilters.lists)) a.dayFilters.lists = ["reminders"];
+
   var knownCalendars = {};
   s.subjects.forEach(function (sub) { knownCalendars[sub.id] = true; });
+
+  var seenHidden = {};
+  if (!Array.isArray(a.hidden)) a.hidden = [];
   a.hidden = a.hidden.filter(function (id) {
-    return typeof id === "string" && knownCalendars[id];
+    if (typeof id !== "string" || !knownCalendars[id] || seenHidden[id]) return false;
+    seenHidden[id] = true;
+    return true;
   });
+
+  var seenCal = {};
   a.dayFilters.calendars = a.dayFilters.calendars.filter(function (id) {
-    return typeof id === "string" && knownCalendars[id];
+    if (typeof id !== "string" || !knownCalendars[id] || seenCal[id]) return false;
+    seenCal[id] = true;
+    return true;
   });
+  var seenList = {};
   a.dayFilters.lists = a.dayFilters.lists.filter(function (id) {
-    return typeof id === "string";
+    if (typeof id !== "string" || seenList[id]) return false;
+    seenList[id] = true;
+    return true;
   });
 
   return s;
@@ -484,7 +648,7 @@ var saveTimer = null;
 
 function save() {
   if (saveTimer) return;
-  saveTimer = setTimeout(flushSave, 120);
+  saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
 }
 
 function flushSave() {

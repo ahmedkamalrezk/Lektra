@@ -6,7 +6,7 @@
 
 ### [Open Lektra →](https://ahmedkamalrezk.github.io/Lektra/)
 
-<sub>iPhone &nbsp;·&nbsp; Android &nbsp;·&nbsp; Desktop &nbsp;·&nbsp; Installs like an app &nbsp;·&nbsp; v188</sub>
+<sub>iPhone &nbsp;·&nbsp; Android &nbsp;·&nbsp; Desktop &nbsp;·&nbsp; Installs like an app &nbsp;·&nbsp; v193</sub>
 
 </div>
 
@@ -195,9 +195,35 @@ The app is hosted on **GitHub Pages** from `main`.
 All paths are relative, so the app works unchanged under that sub-path. Free GitHub Pages
 requires a public repository; Netlify and Cloudflare Pages host private ones.
 
-When you ship a change, bump `CACHE` in `sw.js` **and** `APP_BUILD` in `js/main.js`
-together. The service worker is cache-first on purpose, so without a version bump phones
-keep serving the old build. Settings → More shows the build the phone is actually running.
+When you ship a change, run one command:
+
+```bash
+python3 tools/bump-version.py
+```
+
+It bumps the build in `js/main.js`, `sw.js`, `version.json`, the `?v=` refs in
+`index.html` and `js/scan.js`, and the labels in this README. `--check` verifies
+that every file agrees (safe before a push); `--set 200` jumps to an exact build.
+
+Why the version is in the URL: GitHub Pages caches files on a CDN for about ten
+minutes. A new cache name alone would still let an old `style.css` or `main.js`
+slip under a new build. Each release gets fresh URLs, so new code can never be
+mixed with old code. The worker fills one cache per build, stores the HTML, CSS
+and JS together, and only deletes caches that start with `lektra-` — `github.io`
+shares its origin with every other project on the account.
+
+Already-open pages fetch `version.json` (with a unique query, so the CDN cannot
+answer with an old copy) about once a minute and whenever they return to the
+foreground. When a newer build exists they register the new worker; after it is
+ready the page reloads once. If a sheet is open or a plan is half-typed, the
+reload waits for the next resume. Offline launches still come straight from the
+cache, and no update touches local data.
+
+On localhost the worker switches to network-first, so editing a file and
+reloading shows the change without bumping the build.
+
+Settings → More shows the build the phone is actually running — the fastest way
+to tell a stale cache from a real bug.
 
 </details>
 
@@ -251,7 +277,7 @@ instead — the parsing is identical.
 
 <div align="center">
 
-<sub><b>Lektra</b> &nbsp;·&nbsp; v188 &nbsp;·&nbsp; built to be kept, not bookmarked</sub>
+<sub><b>Lektra</b> &nbsp;·&nbsp; v193 &nbsp;·&nbsp; built to be kept, not bookmarked</sub>
 
 <br>
 

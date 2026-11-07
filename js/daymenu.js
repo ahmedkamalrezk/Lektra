@@ -227,6 +227,9 @@ function dmEdit() {
 
 function dmMove(dayIndex) {
   if (!dmCurrent) return;
+  // The menu only offers 0-6, but a synthetic or stale call must not write an
+  // out-of-range weekday or an Invalid Date into the state.
+  if (!isFinite(dayIndex) || Math.floor(dayIndex) !== dayIndex || dayIndex < 0 || dayIndex > 6) return;
   var ref = dmCurrent.ref;
   if (ref.list === "lectures") {
     ref.item.weekday = dayIndex;
@@ -241,6 +244,9 @@ function dmMove(dayIndex) {
 
 function dmPriority(level) {
   if (!dmCurrent) return;
+  // Keep the stored vocabulary closed: unknown values used to survive in state
+  // and render as an empty priority badge.
+  if (level !== "" && level !== "low" && level !== "medium" && level !== "high") return;
   var item = dmCurrent.ref.item;
   if (level) item.priority = level;
   else delete item.priority;
@@ -361,6 +367,9 @@ function bindDayLongPress(root) {
     el.addEventListener("pointerleave", cancel);
     el.addEventListener("contextmenu", function (e) {
       e.preventDefault();
+      // The delete button owns its own tap; a long press there must not open
+      // the action menu for the whole card.
+      if (e.target.closest("[data-del]")) return;
       if (Date.now() < (el._lpUntil || 0)) return;
       openDayMenu(el);
     });

@@ -56,7 +56,9 @@ function indModeDot() {
 
 function indCalRows() {
   var hidden = state.settings.hidden;
-  var allOn = state.subjects.every(function (s) { return hidden.indexOf(s.id) < 0; });
+  // `[].every(...)` is true, which painted the All-calendars switch as on even
+  // when no calendar existed to show.
+  var allOn = state.subjects.length > 0 && state.subjects.every(function (s) { return hidden.indexOf(s.id) < 0; });
   function sw(id, on, label) {
     return '<button class="sw' + (on ? " on" : "") + '" data-cal="' + id + '" role="switch" aria-checked="' + on + '" aria-label="' + esc(label) + '"></button>';
   }
@@ -297,7 +299,7 @@ function bindIndicatorsSheet(ov) {
     b.onclick = function () {
       var id = b.getAttribute("data-cal");
       if (id === "*") {
-        var allOn = state.subjects.every(function (s) { return state.settings.hidden.indexOf(s.id) < 0; });
+        var allOn = state.subjects.length > 0 && state.subjects.every(function (s) { return state.settings.hidden.indexOf(s.id) < 0; });
         state.settings.hidden = allOn ? state.subjects.map(function (s) { return s.id; }) : [];
       } else {
         var i = state.settings.hidden.indexOf(id);

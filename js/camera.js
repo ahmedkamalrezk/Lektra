@@ -10,6 +10,9 @@ var camFacing = "environment";
 var camShots = [];
 var camOpen = false;
 var camWatch = null;
+// Each getUserMedia() call gets a ticket. A slower, older request that resolves
+// after the user flips the camera must not overwrite the newer stream.
+var camSeq = 0;
 
 var CAM_ICON = {
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.4 8.2h3.1l1.6-2.4h5.8l1.6 2.4h3.1a1.2 1.2 0 0 1 1.2 1.2v9a1.2 1.2 0 0 1-1.2 1.2H4.4a1.2 1.2 0 0 1-1.2-1.2v-9a1.2 1.2 0 0 1 1.2-1.2z"/><circle cx="12" cy="13.4" r="3.4"/></svg>',
@@ -131,6 +134,7 @@ function camPickLibrary() {
 
 function camStart(facing, retried) {
   camStop();
+  var attempt = ++camSeq;
   var video = camNode("camVideo");
   var fb = camNode("camFallback");
   var load = camNode("camLoading");
@@ -156,6 +160,7 @@ function camStart(facing, retried) {
   };
 
   function ready() {
+    if (attempt !== camSeq) return;
     var box = camNode("camView");
     if (!box) return;
     if (camWatch) { clearTimeout(camWatch); camWatch = null; }
@@ -167,6 +172,7 @@ function camStart(facing, retried) {
   video.onloadeddata = ready;
 
   function retryOrFail() {
+    if (attempt !== camSeq) return;
     if (!camNode("camView")) return;
     if (!retried) {
       setTimeout(function () { camStart(facing, true); }, 450);
@@ -186,6 +192,8 @@ function camStart(facing, retried) {
   }, 6000);
 
   navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+    // A newer camStart() or a closeCamera() happened while we were waiting.
+    if (attempt !== camSeq) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
     if (!camNode("camView")) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
     camStream = stream;
     video.srcObject = stream;
@@ -211,6 +219,7 @@ function camFail() {
 }
 
 function camStop() {
+  camSeq++;                       // invalidate any getUserMedia still in flight
   if (camWatch) { clearTimeout(camWatch); camWatch = null; }
   if (camStream) {
     camStream.getTracks().forEach(function (t) { t.stop(); });
@@ -234,7 +243,13 @@ function closeCamera() {
 // came back blank (some WebKit builds hand back empty pixels for accelerated
 // video), so the caller can try ImageCapture instead.
 function camDraw(video, canvas, ctx) {
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // drawImage throws in some browsers when the frame is not decodable yet;
+  // the caller treats a throw as "could not capture", not as a crash.
+  try {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  } catch (e) {
+    return false;
+  }
   try {
     var probe = document.createElement("canvas");
     probe.width = 32; probe.height = 32;

@@ -18,8 +18,23 @@ function openDB() {
       // v2: the result of each scanned timetable, keyed by the photo's fingerprint.
       if (!db.objectStoreNames.contains("scans")) db.createObjectStore("scans", { keyPath: "key" });
     };
-    req.onsuccess = function () { resolve(req.result); };
-    req.onerror = function () { reject(req.error); };
+    req.onsuccess = function () {
+      var db = req.result;
+      // Another tab is upgrading the schema: close this connection so it does
+      // not block that tab, and let the next call reopen the new version.
+      db.onversionchange = function () {
+        try { db.close(); } catch (e) {}
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    // Do not keep a rejected promise cached forever: a transient failure (for
+    // example a private window that blocked storage) would otherwise disable
+    // the database for the rest of the session.
+    req.onerror = function () {
+      dbPromise = null;
+      reject(req.error || new Error("Could not open the local database"));
+    };
   });
   return dbPromise;
 }
@@ -27,8 +42,16 @@ function openDB() {
 function tx(store, mode, fn) {
   return openDB().then(function (db) {
     return new Promise(function (resolve, reject) {
-      var t = db.transaction(store, mode);
-      var req = fn(t.objectStore(store));
+      var t, req;
+      // A missing store or an exception in the request builder used to leave
+      // this promise pending forever, which froze every later save.
+      try {
+        t = db.transaction(store, mode);
+        req = fn(t.objectStore(store));
+      } catch (e) {
+        reject(e);
+        return;
+      }
       t.oncomplete = function () { resolve(req ? req.result : undefined); };
       t.onerror = function () { reject(t.error); };
       t.onabort = function () { reject(t.error); };

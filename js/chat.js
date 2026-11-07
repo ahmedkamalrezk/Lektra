@@ -23,15 +23,29 @@ function chatIsArabic(text) {
   return /[\u0600-\u06FF]/.test(String(text || ""));
 }
 
+// Weekday values arrive from the offline parser, which may hand back a string
+// or nothing at all. Anything outside 0-6 makes an Invalid Date downstream.
+function chatWeekday(pre) {
+  if (!pre || pre.weekday == null || pre.weekday === "") return null;
+  var n = typeof pre.weekday === "number" ? pre.weekday : parseInt(pre.weekday, 10);
+  return isFinite(n) && Math.floor(n) === n && n >= 0 && n <= 6 ? n : null;
+}
+
 function chatDateFor(pre) {
   if (pre && pre.date) {
     var p = String(pre.date).split("-");
-    var d = new Date(+p[0], +p[1] - 1, +p[2]);
-    if (!isNaN(d.getTime())) return d;
+    var y = +p[0], mo = +p[1], day = +p[2];
+    // Reject a rolled-over date such as 2026-02-31 (which JS turns into 3 March)
+    // instead of previewing the wrong day.
+    if (isFinite(y) && isFinite(mo) && isFinite(day) && mo >= 1 && mo <= 12 && day >= 1 && day <= 31) {
+      var d = new Date(y, mo - 1, day);
+      if (!isNaN(d.getTime()) && d.getFullYear() === y && d.getMonth() === mo - 1 && d.getDate() === day) return d;
+    }
   }
   var base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  if (pre && pre.weekday != null) {
-    var diff = (pre.weekday - base.getDay() + 7) % 7;
+  var wd = chatWeekday(pre);
+  if (wd != null) {
+    var diff = (wd - base.getDay() + 7) % 7;
     if (diff === 0) diff = 7;
     return new Date(base.getFullYear(), base.getMonth(), base.getDate() + diff);
   }
@@ -399,7 +413,8 @@ function chatCommit(items) {
         if (state.lectures[i].id === pre.moveId) { existing = state.lectures[i]; break; }
       }
       if (existing) {
-        existing.weekday = pre.weekday != null ? pre.weekday : existing.weekday;
+        var moveDow = chatWeekday(pre);
+        existing.weekday = moveDow != null ? moveDow : existing.weekday;
         existing.time = pre.time || existing.time || "";
         if (pre.place) existing.place = pre.place;
         item.moved = true;
@@ -410,9 +425,10 @@ function chatCommit(items) {
     }
     var subjectId = subjectFor(pre);
     if (isWeekly(pre.kind)) {
+      var addDow = chatWeekday(pre);
       state.lectures.push({
         id: uid(), subjectId: subjectId, kind: pre.kind,
-        weekday: pre.weekday != null ? pre.weekday : today.getDay(),
+        weekday: addDow != null ? addDow : today.getDay(),
         time: pre.time || "", place: pre.place || ""
       });
     } else {

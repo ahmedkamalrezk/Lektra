@@ -14,7 +14,9 @@ function monthBuckets(y, m) {
     (b.evsByDate[e.date] || (b.evsByDate[e.date] = [])).push(e);
   });
   state.lectures.forEach(function (l) {
-    (b.lecsByDow[l.weekday] || (b.lecsByDow[l.weekday] = [])).push(l);
+    var dow = l.weekday;
+    if (typeof dow !== "number" || dow < 0 || dow > 6) return;
+    (b.lecsByDow[dow] || (b.lecsByDow[dow] = [])).push(l);
   });
   Object.keys(b.lecsByDow).forEach(function (d) {
     b.lecsByDow[d].sort(function (a, c) { return a.time < c.time ? -1 : 1; });
@@ -191,7 +193,9 @@ function renderCalendar() {
     }
   }
   state.lectures.forEach(function (l) {
-    var occ = b.dowCount[l.weekday];
+    // A malformed weekday used to make monthCount.all NaN ("NaN" printed in the
+    // All chip) because dowCount[undefined] is undefined.
+    var occ = b.dowCount[l.weekday] || 0;
     monthCount[l.subjectId] = (monthCount[l.subjectId] || 0) + occ;
     monthCount.all += occ;
   });
@@ -606,7 +610,10 @@ function renderDay() {
   clearDaySparkTimer();
   var date = dayOpen, isToday = iso(date) === iso(today);
   var items = dayItems(date);
-  var view = currentDayView();
+  // `dayView` is the list/notes mode. It used to be named `view`, which shadowed
+  // the module-level month cursor and made any future use inside this function
+  // silently read the wrong date.
+  var dayView = currentDayView();
 
   var titleText = isToday ? "Today" : WEEK[date.getDay()];
   var html = '<div class="dhead">' +
@@ -618,8 +625,8 @@ function renderDay() {
       "<span>" + esc(isToday ? date.getDate() + " " + MONTHS[date.getMonth()] : dayAwayLabel(date)) + "</span>" +
     "</div>" +
     '<div class="dseg" role="group" aria-label="Day view">' +
-      '<button class="' + (view === "list" ? "on" : "") + '" data-dv="list" aria-label="List view" aria-pressed="' + (view === "list") + '">' + D_ICON.list + "</button>" +
-      '<button class="' + (view === "notes" ? "on" : "") + '" data-dv="notes" aria-label="Notes" aria-pressed="' + (view === "notes") + '">' + D_ICON.notes + "</button>" +
+      '<button class="' + (dayView === "list" ? "on" : "") + '" data-dv="list" aria-label="List view" aria-pressed="' + (dayView === "list") + '">' + D_ICON.list + "</button>" +
+      '<button class="' + (dayView === "notes" ? "on" : "") + '" data-dv="notes" aria-label="Notes" aria-pressed="' + (dayView === "notes") + '">' + D_ICON.notes + "</button>" +
     "</div>" +
     '<button class="dmore" id="dMore" aria-label="More">' + D_ICON.more + "</button>" +
     '<div class="dmenu" id="dmenu">' +
@@ -635,7 +642,7 @@ function renderDay() {
     "Reminders" + (extraFilters ? '<span class="n">+' + extraFilters + "</span>" : "") +
     "</button></div>";
 
-  if (view === "notes") {
+  if (dayView === "notes") {
     var now = new Date();
     var nowMin = now.getHours() * 60 + now.getMinutes();
     var timed = [], untimed = [];
@@ -674,7 +681,7 @@ function renderDay() {
         '<button class="x" data-del="' + it.kind + ":" + it.id + '" aria-label="Delete">✕</button></div>';
     }).join("") + "</div>";
   }
-  if (view === "list") {
+  if (dayView === "list") {
     html += '<button class="add" id="addLec">+ Add entry</button>';
   }
   if (!isToday) {
@@ -802,7 +809,11 @@ function addLecture(dow, pre) {
   }
   var subId = pre.subjectId || state.subjects[0].id;
   var kind = pre.kind || "lecture";
-  var day = dow;
+  // Some callers open the sheet without a weekday (a spoken plan that named no
+  // day, for example). Saving `undefined` there made a weekly class that no
+  // weekday bucket could ever show, so fall back to today.
+  var day = dow == null || dow === "" ? today.getDay() : +dow;
+  if (!isFinite(day) || Math.floor(day) !== day || day < 0 || day > 6) day = today.getDay();
   var group = isWeekly(kind) ? "w" : "d";
 
   function kindChips() {

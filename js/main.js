@@ -1,7 +1,8 @@
 // ===== Buttons + start =====
-// Bumped together with CACHE in sw.js, so an outdated install is easy to spot:
-// Settings -> More shows this number at the bottom.
-var APP_BUILD = "v188";
+// The build id for this whole release. `python3 tools/bump-version.py` keeps it
+// in sync with sw.js, version.json and the ?v= URLs. Settings -> More shows it,
+// so comparing two phones is the fastest way to spot a stale install.
+var APP_BUILD = "v193";
 
 function render() {
   // Any render satisfies a deferred one.
@@ -402,33 +403,144 @@ function saveLead(key) {
   if (!num || !unit) return;
   var v = parseInt(num.value, 10);
   if (!isFinite(v) || v < 0) v = 0;
-  state.reminders.lead[key] = v * parseInt(unit.value, 10);
+  var unitMins = parseInt(unit.value, 10);
+  if (!isFinite(unitMins) || unitMins <= 0) unitMins = 1;
+  var mins = v * unitMins;
+  // Keep a mistyped number (or a huge value) from overflowing the lead time.
+  if (!isFinite(mins) || mins < 0) mins = 0;
+  if (mins > 525600) mins = 525600;   // one year
+  state.reminders.lead[key] = mins;
   save();
 }
 
 document.getElementById("bSet").onclick = openSettings;
 
 // ===== Service worker (install + offline) =====
+//
+// Each phone keeps its own cache, so "it works on my phone" used to depend on
+// which device had happened to update. Three things now keep every phone on the
+// same build, Chrome and Safari alike:
+//
+//   1. sw.js is registered under its build (?v=v192). A new build is a new URL,
+//      so the GitHub Pages CDN cannot answer the update check with an old worker.
+//   2. version.json (fetched with a unique query) tells an already-running old
+//      page that a newer build exists. That page then registers the new worker.
+//   3. The worker fills one versioned cache; HTML, CSS and JS can never mix.
+//
+// Offline launches still come straight from the cache. Nothing here touches the
+// user's data: state is saved before any reload.
+var swUpdateReady = false;
+var swUpdateNoticed = false;
+var swReloading = false;
+var swFallbackTried = false;
+var swLastCheck = 0;
+
+function appIsBusy() {
+  var app = document.getElementById("app");
+  var modal = document.getElementById("modal");
+  var menu = document.getElementById("dayMenu");
+  return !!document.getElementById("camView") ||
+    (!!app && (app.classList.contains("composing") || app.classList.contains("chatting"))) ||
+    (!!modal && modal.classList.contains("show")) ||
+    (!!menu && menu.classList.contains("show"));
+}
+
+function reloadForUpdate() {
+  if (swReloading) return;
+  if (appIsBusy()) {
+    // Never yank the page out from under an open sheet or a half-typed plan.
+    // The reload happens on the next resume, or after the next launch.
+    swUpdateReady = true;
+    if (!swUpdateNoticed) {
+      swUpdateNoticed = true;
+      toast("New version ready — reopen or switch back to update");
+    }
+    return;
+  }
+  swReloading = true;
+  // The state save is debounced; flush it before the page goes away so an
+  // update can never cost the last edit.
+  if (typeof flushSave === "function") flushSave();
+  window.location.reload();
+}
+
 if ("serviceWorker" in navigator) {
-  // A new build installs in the background and takes over the moment it is
-  // ready. Reload once so the open page isn't left running the previous
-  // version — that is what made a fix look like it "didn't work" after an
-  // update. Skip the very first install (there is nothing stale to replace).
   var swHadController = !!navigator.serviceWorker.controller;
-  var swReloading = false;
+
   navigator.serviceWorker.addEventListener("controllerchange", function () {
-    if (!swHadController || swReloading) return;
-    // Never yank the page out from under an open sheet or a half-typed plan:
-    // tell them instead, and the next launch picks the new build up.
-    var busy = document.getElementById("app").classList.contains("composing") ||
-      document.getElementById("modal").className.indexOf("show") >= 0;
-    if (busy) { toast("Updated — reopen Lektra to finish"); return; }
-    swReloading = true;
-    window.location.reload();
+    if (swReloading) return;
+    if (!swHadController) { swHadController = true; return; }   // first install: page is already current
+    reloadForUpdate();
   });
+
+  function registerBuild(build) {
+    // The build is part of the URL on purpose: it is what makes a cached
+    // sw.js impossible to mistake for the new one.
+    return navigator.serviceWorker.register("sw.js?v=" + encodeURIComponent(build), {
+      updateViaCache: "none",
+      scope: "./"
+    });
+  }
+
+  function controllerBuild() {
+    var c = navigator.serviceWorker.controller;
+    if (!c) return "";
+    try {
+      return new URL(c.scriptURL, location.href).searchParams.get("v") || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function checkForUpdate(force) {
+    var now = Date.now();
+    if (!force && now - swLastCheck < 60000) return;   // at most once a minute
+    swLastCheck = now;
+    if (typeof fetch !== "function") return;
+    // The unique query is deliberate: it makes the CDN treat this as a new
+    // URL, so it cannot serve an edge's ten-minute-old copy of the file.
+    fetch("version.json?t=" + now, { cache: "no-store" })
+      .then(function (r) { return r && r.ok ? r.json() : null; })
+      .then(function (v) {
+        if (!v || !v.build || v.build === APP_BUILD) return;
+        return registerBuild(v.build).then(function () {
+          // If the newer worker is already the one controlling this page (for
+          // example the page was restored from the back/forward cache after an
+          // update), no `controllerchange` will fire. Reload here instead.
+          if (controllerBuild() === v.build) reloadForUpdate();
+        }).catch(function () {
+          // No worker update possible (blocked, private mode, unusual browser).
+          // Only fall back when nothing controls the page: otherwise a
+          // cache-first old worker would answer the navigation with the same
+          // old HTML, and we would reload in a loop. With a controller the
+          // browser's normal update check still replaces it.
+          if (swFallbackTried || navigator.serviceWorker.controller) return;
+          swFallbackTried = true;
+          window.location.replace("./?v=" + encodeURIComponent(v.build));
+        });
+      })
+      .catch(function () { /* offline or a half-published deploy: try again later */ });
+  }
+
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(function () {});
+    registerBuild(APP_BUILD).catch(function () {});
+    setTimeout(function () { checkForUpdate(true); }, 1200);
   });
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) return;
+    checkForUpdate(false);
+    if (swUpdateReady) reloadForUpdate();
+  });
+  window.addEventListener("pageshow", function () { checkForUpdate(false); });
+  window.addEventListener("focus", function () { checkForUpdate(false); });
+  window.addEventListener("online", function () { checkForUpdate(false); });
+  // A phone left on the calendar for a while still picks up a deploy. Background
+  // timers are throttled by the OS; the visibility/pageshow checks above cover
+  // the moment the app comes back.
+  setInterval(function () {
+    if (!document.hidden) checkForUpdate(false);
+  }, 5 * 60 * 1000);
 }
 
 // ===== Boot =====

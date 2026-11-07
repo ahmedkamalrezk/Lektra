@@ -46,7 +46,16 @@ function loadPuter() {
   scanLoader = new Promise(function (resolve, reject) {
     var s = document.createElement("script");
     s.src = SCAN_SCRIPT;
-    s.onload = function () { resolve(); };
+    s.onload = function () {
+      // A blocked or half-loaded helper can fire onload without defining puter.
+      // Fail with an actionable message instead of a raw ReferenceError later.
+      if (typeof puter === "undefined") {
+        scanLoader = null;
+        reject(new Error("The AI helper didn't load. Check your internet connection and try again."));
+        return;
+      }
+      resolve();
+    };
     s.onerror = function () {
       scanLoader = null;
       reject(new Error("Couldn't load the AI helper. Check your internet connection."));
@@ -157,7 +166,7 @@ function scanWorkerStart() {
   if (scanWorker) return scanWorker;
   if (scanWorkerBroken || typeof Worker !== "function") { scanWorkerBroken = true; return null; }
   try {
-    scanWorker = new Worker("js/scan-worker.js");
+    scanWorker = new Worker("js/scan-worker.js?v=v193");
   } catch (e) {
     scanWorkerBroken = true;
     scanWorker = null;
@@ -242,13 +251,19 @@ function responseText(resp) {
 }
 
 function extractJson(text) {
-  var s = String(text == null ? "" : text);
-  s = s.replace(/```(?:json)?/gi, " ");
+  var s = String(text == null ? "" : text).replace(/```(?:json)?/gi, " ");
+  // Models sometimes wrap the answer in prose and sometimes return a bare
+  // array. Try the object slice first, then the array slice, and tolerate the
+  // trailing commas that small vision models like to emit.
+  var slices = [];
   var a = s.indexOf("{"), b = s.lastIndexOf("}");
-  if (a === -1 || b <= a) return null;
-  var slice = s.slice(a, b + 1);
-  try { return JSON.parse(slice); } catch (e) {}
-  try { return JSON.parse(slice.replace(/,\s*([}\]])/g, "$1")); } catch (e) {}
+  if (a !== -1 && b > a) slices.push(s.slice(a, b + 1));
+  var c = s.indexOf("["), d = s.lastIndexOf("]");
+  if (c !== -1 && d > c) slices.push(s.slice(c, d + 1));
+  for (var i = 0; i < slices.length; i++) {
+    try { return JSON.parse(slices[i]); } catch (e) {}
+    try { return JSON.parse(slices[i].replace(/,\s*([}\]])/g, "$1")); } catch (e) {}
+  }
   return null;
 }
 
@@ -267,7 +282,7 @@ var SCAN_DAYS = {
 };
 
 function dayIndex(v) {
-  if (typeof v === "number" && v >= 0 && v <= 6) return v;
+  if (typeof v === "number" && isFinite(v) && Math.floor(v) === v && v >= 0 && v <= 6) return v;
   var s = String(v == null ? "" : v).toLowerCase()
     .replace(/[\u064B-\u0652\u0640]/g, "")   // Arabic diacritics + tatweel
     .replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
@@ -308,30 +323,48 @@ function normKind(v) {
 }
 
 // Turn whatever the model produced into a flat, clean list we can show for review.
+// Accepted shapes:
+//   { subjects: [{ name, entries: [...] }] }   the shape we ask for
+//   [{ name, classes: [...] }]                  a bare array of groups
+//   { classes: [{ day, time, ... }] }           one flat table with no subjects
+//   [{ day, time, ... }]                         a bare array of classes
 function normalizeScan(raw) {
   var out = [];
-  var groups = raw && (raw.subjects || raw.entries || raw.classes);
+  if (!raw || typeof raw !== "object") return out;
+  var groups = Array.isArray(raw)
+    ? raw
+    : (raw.subjects || raw.entries || raw.classes || raw.lessons || []);
   if (!Array.isArray(groups)) return out;
 
+  function pushEntry(e, subjectName) {
+    if (!e || typeof e !== "object") return;
+    var day = dayIndex(e.day != null ? e.day : e.weekday);
+    if (day < 0) return;
+    var subject = String(subjectName || "").trim();
+    if (!subject) subject = String(e.subject || e.course || e.subjectName || e.name || "Timetable").trim();
+    if (!subject) subject = "Timetable";
+    out.push({
+      subject: subject,
+      kind: normKind(e.kind || e.type),
+      day: day,
+      time: normTime(e.start || e.time || e.from),
+      place: String(e.place || e.room || e.hall || e.location || "").trim()
+    });
+  }
+
   groups.forEach(function (grp) {
-    if (!grp) return;
+    if (!grp || typeof grp !== "object") return;
+    var entries = grp.entries || grp.classes || grp.lessons;
+    // A group is anything that names a subject or carries a nested list. A bare
+    // day/time object is a flat entry and gets a neutral subject name.
+    if (!Array.isArray(entries) && (grp.day != null || grp.weekday != null)) {
+      pushEntry(grp, "");
+      return;
+    }
     var name = String(grp.name || grp.subject || grp.title || "").trim();
-    var entries = grp.entries || grp.classes || grp.lessons || [];
     if (!Array.isArray(entries)) entries = [];
     if (!name) return;
-
-    entries.forEach(function (e) {
-      if (!e) return;
-      var day = dayIndex(e.day != null ? e.day : e.weekday);
-      if (day < 0) return;
-      out.push({
-        subject: name,
-        kind: normKind(e.kind || e.type),
-        day: day,
-        time: normTime(e.start || e.time || e.from),
-        place: String(e.place || e.room || e.hall || e.location || "").trim()
-      });
-    });
+    entries.forEach(function (e) { pushEntry(e, name); });
   });
 
   return out.sort(function (a, b) {
@@ -361,7 +394,7 @@ function scanAsk(file, onStage) {
       call = model === null ? puter.ai.chat(prompt, file) : puter.ai.chat(prompt, file, { model: model });
     } catch (e) {
       clearTimeout(timer);
-      return Promise.reject(e);
+      return attempt();   // a missing/blocked helper: try the next route, then fail cleanly
     }
 
     return Promise.race([call, guard]).then(function (resp) {
@@ -372,10 +405,13 @@ function scanAsk(file, onStage) {
     }).catch(function (e) {
       clearTimeout(timer);
       var m = String((e && e.message) || e).toLowerCase();
-      if (/auth|sign|permission|denied|cancel|too long/.test(m)) {
-        throw new Error(/too long/.test(m)
-          ? "The AI took too long to answer. Try again."
-          : "Puter sign-in was cancelled or blocked. Allow pop-ups and try again.");
+      // Match the actual sign-in failure, not any message that happens to
+      // contain "sign" (for example "assign") or "cancel".
+      if (/too long|timed? out/.test(m)) {
+        throw new Error("The AI took too long to answer. Try again.");
+      }
+      if (/sign[- ]?in|signin|unauthori[sz]ed|not authorized|authenticat|permission denied|pop-?up|user cancel|aborted/.test(m)) {
+        throw new Error("Puter sign-in was cancelled or blocked. Allow pop-ups and try again.");
       }
       return attempt();
     });
