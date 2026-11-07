@@ -243,8 +243,8 @@ body{display:flex;justify-content:center;align-items:center}
 .chip.sub .n{background:rgba(0,0,0,.25);color:rgba(255,255,255,.9)}
 #bar{display:flex;gap:2cqw;align-items:center;margin-top:2.5cqw;flex:none;position:relative;z-index:4}
 .plans{flex:1;min-width:0;height:12cqw;border-radius:6cqw;border:1px solid var(--line);background:var(--f06);box-shadow:inset 0 1px 0 var(--bevel),inset 0 -1px 0 var(--shade);color:var(--t6);font-size:3.3cqw;display:flex;align-items:center;overflow:hidden;position:relative}
-.plans textarea{flex:1;min-width:0;height:auto;max-height:100%;background:none;border:0;outline:none;-webkit-appearance:none;appearance:none;color:var(--t1);font:inherit;font-size:16px;line-height:1.35;padding:0 0 0 3.6cqw;resize:none;overflow-y:auto;display:block;white-space:pre-wrap;overflow-wrap:break-word}
-.plans textarea::placeholder{color:var(--t6);opacity:1;font-size:3.2cqw}
+.plans textarea{flex:1;min-width:0;height:100%;background:none;border:0;outline:none;-webkit-appearance:none;appearance:none;color:var(--t1);font:inherit;font-size:16px;line-height:calc(12cqw - 2px);padding:0 1cqw 0 3.6cqw;resize:none;overflow:hidden;display:block;white-space:nowrap;text-overflow:ellipsis;overflow-wrap:normal}
+.plans textarea::placeholder{color:var(--t6);opacity:1;font-size:3cqw}
 .plans.rec textarea::placeholder{color:#ff3b30}
 .composer-handle{display:none}
 .composer-actions{display:flex;align-items:center;height:100%;flex:none}
@@ -262,7 +262,7 @@ body{display:flex;justify-content:center;align-items:center}
 #app.composing .plans{flex:1;width:100%;height:auto;flex-direction:column;align-items:stretch;overflow:visible;padding:1.8cqw 4cqw 2.2cqw;border-radius:6.4cqw;border:1px solid var(--line);background:var(--f06);backdrop-filter:blur(26px) saturate(1.25);-webkit-backdrop-filter:blur(26px) saturate(1.25);box-shadow:0 -3cqw 9cqw var(--shadow),inset 0 1px 0 var(--bevel);animation:composerIn .22s cubic-bezier(.23,1,.32,1)}
 #app.composing .plans > *{position:relative;z-index:1}
 #app.composing .composer-handle{display:block;width:9cqw;height:1cqw;border-radius:1cqw;background:var(--line-2);margin:0 auto 1.8cqw;flex:none}
-#app.composing .plans textarea{flex:none;height:auto;min-height:5.4cqw;max-height:30cqw;font-size:4.2cqw;line-height:1.4;padding:.2cqw 1.2cqw;text-overflow:clip;overflow-y:auto}
+#app.composing .plans textarea{flex:none;height:auto;min-height:5.4cqw;max-height:30cqw;font-size:4.2cqw;line-height:1.4;padding:.2cqw 1.2cqw;text-overflow:clip;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word}
 #app.composing .plans textarea::placeholder{font-size:4.2cqw}
 #app.composing .composer-actions{display:flex;align-items:center;gap:2.2cqw;width:100%;height:auto;margin-top:1.8cqw}
 #app.composing .cbtn{display:flex;width:8cqw;height:8cqw;border-radius:50%;border:0;background:var(--f08);box-shadow:none;color:var(--t3)}
