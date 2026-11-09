@@ -186,9 +186,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 body{display:flex;justify-content:center;align-items:center}
 #app{width:100%;max-width:430px;height:100%;background:var(--app-bg);color:var(--t1);container-type:inline-size;overflow:hidden;position:relative}
 @media (min-width:560px){html,body{background:var(--bg)}#app{height:min(100%,900px);border-radius:48px;border:6px solid #2b2b2e}}
-/* iOS paints the strip above the web layer with the page background. Keep it
-   in sync with the sheet scrim instead of leaving a bright band on top. */
-@media (max-width:559px){html,body{background:var(--status-bg,var(--app-bg))}}
 #screen{height:100%;display:flex;flex-direction:column;padding:calc(5cqw + var(--safe-top)) 5cqw calc(4cqw + var(--safe-bottom));position:relative}
 .handle{width:9cqw;height:1cqw;border-radius:1cqw;background:var(--line-2);margin:0 auto;flex:none}
 .round{width:12.4cqw;height:12.4cqw;border-radius:50%;border:1px solid var(--line);background:var(--f06);box-shadow:inset 0 1px 0 var(--bevel),inset 0 -1px 0 var(--shade);color:var(--t3);cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;padding:0}
@@ -543,7 +540,9 @@ button.cam-thumb{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Flat dim only: a backdrop blur turned the whole calendar into an unreadable
    wash on phones, and the menu is opaque enough to stand on its own. Fixed
    rather than absolute so iOS/Safari samples this layer for the status bar,
-   which keeps that strip the same tint as the dimmed page. */
+   which keeps that strip the same tint as the dimmed page. The page background
+   must stay --app-bg: Safari blends this dim over it, so pre-dimming the
+   background would apply the same scrim twice and leave a darker top band. */
 .dm-scrim{position:fixed;inset:0;background:var(--scrim);-webkit-backdrop-filter:none;backdrop-filter:none}
 /* menu-solid is 97% opaque: a 40px backdrop blur behind it was invisible. */
 .dm-card{position:absolute;right:5cqw;transform:scale(.95);width:60cqw;max-height:76%;overflow-y:auto;overscroll-behavior:contain;padding:1.4cqw;border-radius:5.4cqw;border:1px solid var(--f16);background:var(--menu-solid);box-shadow:0 4cqw 14cqw rgba(0,0,0,.5),inset 0 1px 0 var(--f12);color:var(--t1);transform-origin:top right;transition:transform .18s cubic-bezier(.2,.9,.25,1)}

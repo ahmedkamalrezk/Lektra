@@ -262,29 +262,26 @@ function blendCssColor(fg, bg) {
 // from the computed style would force a full style recalculation, and this runs
 // on every theme change.
 function syncThemeColor(bgOverride) {
-  var root = document.documentElement;
-  var appBg = bgOverride || (getComputedStyle(root).getPropertyValue("--app-bg").trim() || "#161616");
+  var appBg = bgOverride || (getComputedStyle(document.documentElement).getPropertyValue("--app-bg").trim() || "#161616");
+  // Only the meta tag follows the open sheet. It colours the system bar on
+  // browsers that paint one (Chrome/Android, older iOS). The page itself must
+  // stay --app-bg: painting the already-dimmed colour there applied the same
+  // scrim twice and produced a darker band above the app.
+  var color = appBg;
   var modal = document.getElementById("modal");
   var app = document.getElementById("app");
-  var color = appBg;
   if (modal && modal.classList.contains("show")) {
     color = blendCssColor(getComputedStyle(modal).backgroundColor, appBg);
   } else if (app && app.classList.contains("chatting")) {
     var chat = document.getElementById("chat");
     if (chat) color = blendCssColor(getComputedStyle(chat).backgroundColor, appBg);
   } else if (document.querySelector("#dayMenu.show")) {
-    // The long-press menu dims the calendar; tint the status-bar strip with the
-    // same scrim so it cannot show up as a bright band above a darker app.
     var dmScrim = document.querySelector("#dayMenu .dm-scrim");
     if (dmScrim) color = blendCssColor(getComputedStyle(dmScrim).backgroundColor, appBg);
   } else if (app && app.classList.contains("composing")) {
     var scrim = document.getElementById("composerScrim");
     if (scrim) color = blendCssColor(getComputedStyle(scrim).backgroundColor, appBg);
   }
-  // The strip above the web layer samples the page background; the meta tag
-  // covers browsers that use theme-color instead. Setting both keeps the
-  // status bar flush with the app in light, dark and custom themes.
-  root.style.setProperty("--status-bg", color);
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", color);
 }

@@ -5,7 +5,7 @@
 // together into one cache, and the GitHub Pages CDN can never slip an old file
 // into a new build. `tools/bump-version.py` keeps BUILD, APP_BUILD, index.html
 // and version.json in sync, so this is one command, not a checklist.
-var BUILD = "v195";                 // keep in sync with APP_BUILD (js/main.js)
+var BUILD = "v196";                 // keep in sync with APP_BUILD (js/main.js)
 var CACHE = "lektra-" + BUILD;
 var V = "?v=" + BUILD;
 
