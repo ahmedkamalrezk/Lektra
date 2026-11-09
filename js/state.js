@@ -258,6 +258,23 @@ function blendCssColor(fg, bg) {
   return "#" + hex(r) + hex(g) + hex(bl);
 }
 
+// The strip iOS paints above the page follows the fixed layer that reaches
+// that edge. Keep it opaque and painted with the exact colour that belongs
+// there (app background, or the open sheet's blend over it) and re-create the
+// element whenever that colour changes: a fresh layer is what makes iOS take
+// a new sample, so light/dark follows at once instead of keeping the old tint
+// until an overlay happens to open.
+var paintedStripColor = "";
+function paintStatusStrip(color) {
+  if (color === paintedStripColor) return;
+  var strip = document.getElementById("statusStrip");
+  if (!strip || !strip.parentNode) return;
+  paintedStripColor = color;
+  var fresh = strip.cloneNode(false);
+  fresh.style.backgroundColor = color;
+  strip.parentNode.replaceChild(fresh, strip);
+}
+
 // `bgOverride` is the app background the caller just wrote. Reading it back
 // from the computed style would force a full style recalculation, and this runs
 // on every theme change.
@@ -287,6 +304,7 @@ function syncThemeColor(bgOverride) {
   }
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", color);
+  paintStatusStrip(color);
 }
 
 function applyTheme() {

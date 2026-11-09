@@ -184,11 +184,18 @@ html{scroll-padding-top:var(--safe-top)}
 button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent-text,var(--accent));outline-offset:2px}
 .box:focus{outline:none}
 body{display:flex;justify-content:center;align-items:center}
+/* iOS paints the strip above the page from the fixed layer that reaches that
+   edge, and it does not refresh that sample when a CSS variable changes. Keep
+   one opaque strip there at all times, painted with the exact colour that
+   belongs above the page (the app background, or the open sheet's blend over
+   it). syncThemeColor() re-creates it on every colour change, so light/dark
+   follows instantly instead of waiting for the next overlay. */
+#statusStrip{position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:var(--app-bg);pointer-events:none;z-index:9999}
+#app{width:100%;max-width:430px;height:100%;background:var(--app-bg);color:var(--t1);container-type:inline-size;overflow:hidden;position:relative}
 /* contain:layout keeps the fixed full-screen layers (which iOS needs for the
    status-bar sample) inside the phone frame on wide screens instead of letting
    them span the whole browser window. Phones stay full-screen, so they need no
    containment and keep the plain viewport-fixed sampling. */
-#app{width:100%;max-width:430px;height:100%;background:var(--app-bg);color:var(--t1);container-type:inline-size;overflow:hidden;position:relative}
 @media (min-width:560px){html,body{background:var(--bg)}#app{height:min(100%,900px);border-radius:48px;border:6px solid #2b2b2e;contain:layout}}
 #screen{height:100%;display:flex;flex-direction:column;padding:calc(5cqw + var(--safe-top)) 5cqw calc(4cqw + var(--safe-bottom));position:relative}
 .handle{width:9cqw;height:1cqw;border-radius:1cqw;background:var(--line-2);margin:0 auto;flex:none}
