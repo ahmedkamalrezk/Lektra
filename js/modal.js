@@ -95,6 +95,10 @@ function openModal(html, onOk) {
   if (onOk) document.getElementById("mOk").onclick = function () { if (onOk() !== false) closeModal(); };
   dragToClose(box);
   prepareDialog(box);
+  // Paint the status strip in this same task: the mutation observer alone
+  // lands after the browser may already have sampled the old colour, which
+  // showed up as a light gap above the dim for one frame.
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 // Full-height sheet without the default footer (caller draws its own buttons)
 function openSheet(html) {
@@ -111,6 +115,7 @@ function openSheet(html) {
   document.getElementById("modal").onclick = function (e) { if (e.target === this) closeModal(); };
   dragToClose(box);
   prepareDialog(box);
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 function closeModal() {
   // The sheet may want to check before it is thrown away (unsaved scan results).
@@ -132,6 +137,7 @@ function closeModal() {
   if (box) box.removeAttribute("data-page");
   restoreFocus();
   if (typeof flushPendingRender === "function") flushPendingRender();
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 
 // Escape closes any open sheet. Individual sheets (search, the day menu) may

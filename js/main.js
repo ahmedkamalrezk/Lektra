@@ -2,7 +2,7 @@
 // The build id for this whole release. `python3 tools/bump-version.py` keeps it
 // in sync with sw.js, version.json and the ?v= URLs. Settings -> More shows it,
 // so comparing two phones is the fastest way to spot a stale install.
-var APP_BUILD = "v204";
+var APP_BUILD = "v205";
 
 function render() {
   // Any render satisfies a deferred one.
@@ -226,6 +226,7 @@ function openDeveloperSheet() {
   var close = ov.querySelector("[data-dev-close]");
   if (close) close.onclick = dismissDeveloperSheet;
   ov.scrollTop = 0;
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 
 function dismissDeveloperSheet() {
@@ -241,6 +242,7 @@ function dismissDeveloperSheet() {
     if (m.querySelector("#devSheet") !== ov) return;
     removeDeveloperSheet();
     m.onclick = function (e) { if (e.target === this) closeModal(); };
+    if (typeof syncThemeColor === "function") syncThemeColor();
   }, 200);
 }
 
@@ -267,6 +269,9 @@ function settingsPage(page) {
   document.getElementById("modal").className = "show" + (page === "filters" ? " filter-mode" : "");
   document.getElementById("modal").onclick = function (e) { if (e.target === this) closeModal(); };
   prepareDialog(box);
+  // Same task as the class change, so the first painted frame already has the
+  // final strip colour instead of showing an undimmed gap above the sheet.
+  if (typeof syncThemeColor === "function") syncThemeColor();
 
   box.querySelectorAll("[data-set]").forEach(function (b) {
     b.onclick = function () {

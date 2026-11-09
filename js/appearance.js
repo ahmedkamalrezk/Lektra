@@ -340,6 +340,7 @@ function openIndicatorsSheet() {
   bindOverlayDrag(ov, dismissIndicators);
   m.onclick = function (e) { if (e.target === this) dismissIndicators(); };
   ov.scrollTop = 0;
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 
 function dismissIndicators() {
@@ -356,6 +357,7 @@ function dismissIndicators() {
     removeIndicatorsSheet();
     m.onclick = function (e) { if (e.target === this) closeModal(); };
     refreshAppearance();
+    if (typeof syncThemeColor === "function") syncThemeColor();
   }, 200);
 }
 
@@ -610,6 +612,7 @@ function openThemesSheet() {
   bindOverlayDrag(ov, dismissThemes);
   m.onclick = function (e) { if (e.target === this) dismissThemes(); };
   ov.scrollTop = 0;
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 
 function dismissThemes() {
@@ -626,6 +629,7 @@ function dismissThemes() {
     removeThemesSheet();
     m.onclick = function (e) { if (e.target === this) closeModal(); };
     refreshAppearance();
+    if (typeof syncThemeColor === "function") syncThemeColor();
   }, 200);
 }
 

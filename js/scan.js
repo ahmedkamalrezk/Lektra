@@ -166,7 +166,7 @@ function scanWorkerStart() {
   if (scanWorker) return scanWorker;
   if (scanWorkerBroken || typeof Worker !== "function") { scanWorkerBroken = true; return null; }
   try {
-    scanWorker = new Worker("js/scan-worker.js?v=v204");
+    scanWorker = new Worker("js/scan-worker.js?v=v205");
   } catch (e) {
     scanWorkerBroken = true;
     scanWorker = null;
@@ -754,6 +754,7 @@ function scanFail(message) {
 function removeScanWarn() {
   var w = document.querySelector(".scan-warn");
   if (w) w.remove();
+  if (typeof syncThemeColor === "function") syncThemeColor();
 }
 
 function askBeforeDiscardScan() {
@@ -773,6 +774,7 @@ function askBeforeDiscardScan() {
       '</div>' +
     '</div>';
   modal.appendChild(wrap);
+  if (typeof syncThemeColor === "function") syncThemeColor();
 
   wrap.onclick = function (e) { if (e.target === wrap) removeScanWarn(); };
   document.getElementById("scanWarnStay").onclick = removeScanWarn;
