@@ -535,8 +535,11 @@ button.cam-thumb{cursor:pointer;-webkit-tap-highlight-color:transparent}
    Ctrl+A instead of entering select mode. */
 #main,.dm,#daySelBar{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #main input,#main textarea,#main [contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
-#dayMenu{position:absolute;inset:0;z-index:12;opacity:0;pointer-events:none;transition:opacity .16s ease}
-#dayMenu.show{opacity:1;pointer-events:auto}
+/* The menu is created on open and removed on close, so it is visible from the
+   first painted frame. A fade here made the dim arrive late while the status
+   bar kept its old tint; the user saw an empty bright strip for a beat before
+   the screen dimmed. Only the card animates now; the dim is immediate. */
+#dayMenu{position:absolute;inset:0;z-index:12}
 /* Flat dim only: a backdrop blur turned the whole calendar into an unreadable
    wash on phones, and the menu is opaque enough to stand on its own. Fixed
    rather than absolute so iOS/Safari samples this layer for the status bar,

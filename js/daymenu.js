@@ -160,10 +160,10 @@ function openDayMenu(el) {
 
   menu.addEventListener("click", dmClick);
   document.addEventListener("keydown", dmKeydown);
-  requestAnimationFrame(function () {
-    menu.classList.add("show");
-    if (typeof syncThemeColor === "function") syncThemeColor();
-  });
+  // Colour the system bar in the same frame the dim appears; the card keeps
+  // its own scale animation on the next frame.
+  if (typeof syncThemeColor === "function") syncThemeColor();
+  requestAnimationFrame(function () { menu.classList.add("show"); });
 }
 
 function dmClick(e) {

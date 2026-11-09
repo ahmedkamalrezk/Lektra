@@ -275,7 +275,7 @@ function syncThemeColor(bgOverride) {
   } else if (app && app.classList.contains("chatting")) {
     var chat = document.getElementById("chat");
     if (chat) color = blendCssColor(getComputedStyle(chat).backgroundColor, appBg);
-  } else if (document.querySelector("#dayMenu.show")) {
+  } else if (document.getElementById("dayMenu")) {
     var dmScrim = document.querySelector("#dayMenu .dm-scrim");
     if (dmScrim) color = blendCssColor(getComputedStyle(dmScrim).backgroundColor, appBg);
   } else if (app && app.classList.contains("composing")) {
