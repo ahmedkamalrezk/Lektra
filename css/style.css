@@ -185,11 +185,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .box:focus{outline:none}
 body{display:flex;justify-content:center;align-items:center}
 /* iOS paints the strip above the page from the fixed layer that reaches that
-   edge, and it does not refresh that sample when a CSS variable changes. Keep
+   edge, and it only refreshes that sample when such a layer is attached. Keep
    one opaque strip there at all times, painted with the exact colour that
    belongs above the page (the app background, or the open sheet's blend over
-   it). syncThemeColor() re-creates it on every colour change, so light/dark
-   follows instantly instead of waiting for the next overlay. */
+   it). It sits outside #app so a sheet can never paint over it, and
+   syncThemeColor() detaches and re-attaches it across one frame on every
+   colour change: the un-covered instant shows the very same colour, so it is
+   invisible, and iOS takes a fresh sample right away. */
 #statusStrip{position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:var(--app-bg);pointer-events:none;z-index:9999}
 #app{width:100%;max-width:430px;height:100%;background:var(--app-bg);color:var(--t1);container-type:inline-size;overflow:hidden;position:relative}
 /* contain:layout keeps the fixed full-screen layers (which iOS needs for the

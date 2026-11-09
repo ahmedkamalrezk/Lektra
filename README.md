@@ -6,7 +6,7 @@
 
 ### [Open Lektra →](https://ahmedkamalrezk.github.io/Lektra/)
 
-<sub>iPhone &nbsp;·&nbsp; Android &nbsp;·&nbsp; Desktop &nbsp;·&nbsp; Installs like an app &nbsp;·&nbsp; v201</sub>
+<sub>iPhone &nbsp;·&nbsp; Android &nbsp;·&nbsp; Desktop &nbsp;·&nbsp; Installs like an app &nbsp;·&nbsp; v203</sub>
 
 </div>
 
@@ -277,7 +277,7 @@ instead — the parsing is identical.
 
 <div align="center">
 
-<sub><b>Lektra</b> &nbsp;·&nbsp; v201 &nbsp;·&nbsp; built to be kept, not bookmarked</sub>
+<sub><b>Lektra</b> &nbsp;·&nbsp; v203 &nbsp;·&nbsp; built to be kept, not bookmarked</sub>
 
 <br>
 

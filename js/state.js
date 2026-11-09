@@ -260,19 +260,28 @@ function blendCssColor(fg, bg) {
 
 // The strip iOS paints above the page follows the fixed layer that reaches
 // that edge. Keep it opaque and painted with the exact colour that belongs
-// there (app background, or the open sheet's blend over it) and re-create the
-// element whenever that colour changes: a fresh layer is what makes iOS take
-// a new sample, so light/dark follows at once instead of keeping the old tint
-// until an overlay happens to open.
+// there (app background, or the open sheet's blend over it). WebKit keeps the
+// last colour it sampled until such a layer is attached again, so detach the
+// strip now and attach a fresh one on the next frame. The un-covered instant
+// shows the very same colour underneath, so the swap is invisible, and iOS
+// takes a new sample instead of keeping the previous theme's tint.
 var paintedStripColor = "";
+var stripFrame = 0;
 function paintStatusStrip(color) {
   if (color === paintedStripColor) return;
-  var strip = document.getElementById("statusStrip");
-  if (!strip || !strip.parentNode) return;
   paintedStripColor = color;
-  var fresh = strip.cloneNode(false);
-  fresh.style.backgroundColor = color;
-  strip.parentNode.replaceChild(fresh, strip);
+  var strip = document.getElementById("statusStrip");
+  if (strip) strip.remove();
+  if (stripFrame) cancelAnimationFrame(stripFrame);
+  stripFrame = requestAnimationFrame(function () {
+    stripFrame = 0;
+    if (!paintedStripColor) return;
+    var fresh = document.createElement("div");
+    fresh.id = "statusStrip";
+    fresh.setAttribute("aria-hidden", "true");
+    fresh.style.backgroundColor = paintedStripColor;
+    document.body.appendChild(fresh);
+  });
 }
 
 // `bgOverride` is the app background the caller just wrote. Reading it back
@@ -303,7 +312,13 @@ function syncThemeColor(bgOverride) {
     if (scrim) color = blendCssColor(getComputedStyle(scrim).backgroundColor, appBg);
   }
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", color);
+  if (meta && meta.getAttribute("content") !== color) {
+    // Replace the node rather than only editing it: some iOS builds re-read
+    // the theme colour when the tag is attached, not when its content changes.
+    var freshMeta = meta.cloneNode(false);
+    freshMeta.setAttribute("content", color);
+    meta.parentNode.replaceChild(freshMeta, meta);
+  }
   paintStatusStrip(color);
 }
 
@@ -344,7 +359,13 @@ function applyTheme() {
   }
   syncThemeColor(appBg);
   var cs = document.querySelector('meta[name="color-scheme"]');
-  if (cs) cs.setAttribute("content", mode);
+  if (cs && cs.getAttribute("content") !== mode) {
+    // Same reason as the theme-colour tag: attach a fresh node so the system
+    // re-reads the scheme and flips the status-bar icons with the theme.
+    var freshCs = cs.cloneNode(false);
+    freshCs.setAttribute("content", mode);
+    cs.parentNode.replaceChild(freshCs, cs);
+  }
   if (typeof refreshAppearance === "function") refreshAppearance();
   if (typeof refreshIndicatorsSheet === "function") refreshIndicatorsSheet();
   if (typeof refreshMonthOptions === "function") refreshMonthOptions();
