@@ -271,7 +271,10 @@ function syncThemeColor(bgOverride) {
   var modal = document.getElementById("modal");
   var app = document.getElementById("app");
   if (modal && modal.classList.contains("show")) {
-    color = blendCssColor(getComputedStyle(modal).backgroundColor, appBg);
+    // A stacked sheet (or the discard warning) is the only dim then: #modal
+    // turns transparent so one layer tints both the page and the status bar.
+    var dim = modal.querySelector(".scan-warn") || modal.querySelector(".sheet-scrim") || modal;
+    color = blendCssColor(getComputedStyle(dim).backgroundColor, appBg);
   } else if (app && app.classList.contains("chatting")) {
     var chat = document.getElementById("chat");
     if (chat) color = blendCssColor(getComputedStyle(chat).backgroundColor, appBg);
@@ -365,7 +368,8 @@ if (window.MutationObserver) {
     // syncThemeColor treats its first argument as the background colour.
     new MutationObserver(function () { syncThemeColor(); }).observe(modalWatch, {
       attributes: true,
-      attributeFilter: ["class"]
+      attributeFilter: ["class"],
+      childList: true
     });
   }
 }
