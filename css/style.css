@@ -373,9 +373,12 @@ body{display:flex;justify-content:center;align-items:center}
 .back{background:none;border:0;color:var(--t4);cursor:pointer;font-size:3.4cqw;margin:6cqw 0 0;padding:0}
 /* Fixed so iOS samples this dim for the status bar; the page background stays
    --app-bg, otherwise the same overlay would be applied twice up there. The
-   frost lives on the sheet (below), so this sampled layer is a plain colour. */
-#modal{position:fixed;inset:0;background:var(--overlay);display:none;align-items:flex-end;z-index:5}
+   frost lives on the sheet (below), so this sampled layer is a plain colour.
+   The dim is its own empty element: a theme change can re-attach it without
+   touching the sheet or losing its scroll/focus. */
+#modal{position:fixed;inset:0;display:none;align-items:flex-end;z-index:5}
 #modal.show{display:flex}
+.modal-scrim{position:fixed;inset:0;z-index:-1;background:var(--overlay)}
 /* The sheet owns the frost: #modal is a flat sampled dim, so the blur covers
    just the sheet instead of re-filtering the whole screen behind it. */
 .box{width:100%;background:var(--sheet);backdrop-filter:blur(20px) saturate(1.12);-webkit-backdrop-filter:blur(20px) saturate(1.12);border-top:1px solid var(--line);border-radius:8cqw 8cqw 0 0;padding:2.5cqw 5cqw calc(5cqw + var(--safe-bottom));max-height:90%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;color:var(--t1);box-shadow:0 -3cqw 9cqw var(--shadow),inset 0 1px 0 var(--f07);animation:sheetUp .3s cubic-bezier(.2,.9,.25,1)}
@@ -610,7 +613,7 @@ button.cam-thumb{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* AI timetable import */
 .add.scan{border-style:solid;border-color:var(--scan-border);color:var(--scan-text)}
 /* search sheet */
-#modal.search-mode{align-items:flex-start;padding:calc(9cqw + var(--safe-top)) 4cqw 0;background:var(--overlay)}
+#modal.search-mode{align-items:flex-start;padding:calc(9cqw + var(--safe-top)) 4cqw 0}
 .box.search{background:var(--sheet2);backdrop-filter:blur(32px) saturate(1.3);-webkit-backdrop-filter:blur(32px) saturate(1.3);border:1px solid var(--line);border-radius:6.4cqw;box-shadow:0 6cqw 18cqw var(--shadow),inset 0 1px 0 var(--f08);padding:3.2cqw 4cqw 3.6cqw;max-height:78%;animation:searchIn .26s cubic-bezier(.2,.9,.25,1)}
 @keyframes searchIn{from{opacity:0;transform:translateY(-2.5cqw)}}
 .box.search .handle{display:none}
@@ -945,10 +948,10 @@ button.cam-thumb{cursor:pointer;-webkit-tap-highlight-color:transparent}
 
 /* Theme gallery (stacked sheet) */
 /* A stacked sheet dims the open one. It is fixed (see #modal) and, while it is
-   present, #modal drops its own tint: exactly one full-screen dim is painted,
-   so the sampled status-bar strip and the page always match. */
+   present, the base dim is hidden: exactly one full-screen dim is painted, so
+   the sampled status-bar strip and the page always match. */
 .sheet-scrim{position:fixed;inset:0;z-index:6;background:var(--scrim)}
-#modal:has(.sheet-scrim),#modal:has(.scan-warn){background:transparent}
+#modal:has(.sheet-scrim) .modal-scrim,#modal:has(.scan-warn) .modal-scrim{display:none}
 .box.overlay{position:absolute;left:0;right:0;bottom:0;z-index:7;max-height:88%;border-radius:8cqw 8cqw 0 0;border-top:1px solid var(--line);background:var(--sheet);box-shadow:0 -3cqw 9cqw var(--shadow),inset 0 1px 0 var(--f07);padding:2.5cqw 5cqw calc(4.5cqw + var(--safe-bottom));overflow-y:auto;overscroll-behavior:contain;color:var(--t1);animation:sheetUp .3s cubic-bezier(.2,.9,.25,1)}
 .ovhead{display:flex;align-items:center;gap:3cqw;margin:4.4cqw 0 1cqw}
 .ovhead h2{margin:0;flex:1;font-size:8cqw;font-weight:800;letter-spacing:-.04em;line-height:1.1}

@@ -271,9 +271,9 @@ function syncThemeColor(bgOverride) {
   var modal = document.getElementById("modal");
   var app = document.getElementById("app");
   if (modal && modal.classList.contains("show")) {
-    // A stacked sheet (or the discard warning) is the only dim then: #modal
-    // turns transparent so one layer tints both the page and the status bar.
-    var dim = modal.querySelector(".scan-warn") || modal.querySelector(".sheet-scrim") || modal;
+    // A stacked sheet (or the discard warning) is the only dim then: the base
+    // dim is hidden so one layer tints both the page and the status bar.
+    var dim = modal.querySelector(".scan-warn") || modal.querySelector(".sheet-scrim") || modal.querySelector(".modal-scrim") || modal;
     color = blendCssColor(getComputedStyle(dim).backgroundColor, appBg);
   } else if (app && app.classList.contains("chatting")) {
     var chat = document.getElementById("chat");
@@ -330,6 +330,33 @@ function applyTheme() {
   if (typeof refreshAppearance === "function") refreshAppearance();
   if (typeof refreshIndicatorsSheet === "function") refreshIndicatorsSheet();
   if (typeof refreshMonthOptions === "function") refreshMonthOptions();
+  retintDims();
+}
+
+// WebKit keeps the last colour it sampled for the strip above the page and
+// refreshes it only when the fixed layer on that edge is re-attached. A theme
+// change under an open sheet therefore left that strip in the previous theme
+// until the sheet was closed and reopened. Re-attach the active dim in the
+// same task, so no frame is ever painted without it, and the sample follows
+// the new theme immediately.
+function retintDims() {
+  var dims = document.querySelectorAll("#composerScrim,#dayMenu .dm-scrim,#modal.show .scan-warn,#modal.show .sheet-scrim,#modal.show .modal-scrim");
+  for (var i = 0; i < dims.length; i++) {
+    var el = dims[i];
+    if (getComputedStyle(el).display === "none") continue;
+    el.style.display = "none";
+    void el.offsetHeight;   // commit the detach before restoring the layer
+    el.style.display = "";
+  }
+  // The strip can also be showing the root paint, so force that canvas to
+  // repaint too. html and body share --app-bg (or --bg), so dropping body's
+  // background for the same synchronous instant is invisible.
+  var body = document.body;
+  var bodyBg = body.style.backgroundColor;
+  body.style.backgroundColor = "transparent";
+  void body.offsetHeight;
+  body.style.backgroundColor = bodyBg;
+  syncThemeColor();
 }
 
 if (window.matchMedia) {
