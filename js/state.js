@@ -258,30 +258,23 @@ function blendCssColor(fg, bg) {
   return "#" + hex(r) + hex(g) + hex(bl);
 }
 
-// The strip iOS paints above the page follows the fixed layer that reaches
-// that edge. Keep it opaque and painted with the exact colour that belongs
-// there (app background, or the open sheet's blend over it). WebKit keeps the
-// last colour it sampled until such a layer is attached again, so detach the
-// strip now and attach a fresh one on the next frame. The un-covered instant
-// shows the very same colour underneath, so the swap is invisible, and iOS
-// takes a new sample instead of keeping the previous theme's tint.
+// The strip iOS paints above the page follows the fixed layer at the top
+// edge. Keep it in place and only change its colour: removing it makes WebKit
+// keep the last sampled colour, and a background change on a qualifying strip
+// is tracked live. The colour is the exact final colour of the page top (app
+// background, or the open sheet's blend over it).
 var paintedStripColor = "";
-var stripFrame = 0;
 function paintStatusStrip(color) {
   if (color === paintedStripColor) return;
   paintedStripColor = color;
   var strip = document.getElementById("statusStrip");
-  if (strip) strip.remove();
-  if (stripFrame) cancelAnimationFrame(stripFrame);
-  stripFrame = requestAnimationFrame(function () {
-    stripFrame = 0;
-    if (!paintedStripColor) return;
-    var fresh = document.createElement("div");
-    fresh.id = "statusStrip";
-    fresh.setAttribute("aria-hidden", "true");
-    fresh.style.backgroundColor = paintedStripColor;
-    document.body.appendChild(fresh);
-  });
+  if (!strip) {
+    strip = document.createElement("div");
+    strip.id = "statusStrip";
+    strip.setAttribute("aria-hidden", "true");
+    document.body.appendChild(strip);
+  }
+  strip.style.backgroundColor = color;
 }
 
 // `bgOverride` is the app background the caller just wrote. Reading it back
@@ -312,13 +305,7 @@ function syncThemeColor(bgOverride) {
     if (scrim) color = blendCssColor(getComputedStyle(scrim).backgroundColor, appBg);
   }
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta && meta.getAttribute("content") !== color) {
-    // Replace the node rather than only editing it: some iOS builds re-read
-    // the theme colour when the tag is attached, not when its content changes.
-    var freshMeta = meta.cloneNode(false);
-    freshMeta.setAttribute("content", color);
-    meta.parentNode.replaceChild(freshMeta, meta);
-  }
+  if (meta) meta.setAttribute("content", color);
   paintStatusStrip(color);
 }
 
@@ -359,13 +346,7 @@ function applyTheme() {
   }
   syncThemeColor(appBg);
   var cs = document.querySelector('meta[name="color-scheme"]');
-  if (cs && cs.getAttribute("content") !== mode) {
-    // Same reason as the theme-colour tag: attach a fresh node so the system
-    // re-reads the scheme and flips the status-bar icons with the theme.
-    var freshCs = cs.cloneNode(false);
-    freshCs.setAttribute("content", mode);
-    cs.parentNode.replaceChild(freshCs, cs);
-  }
+  if (cs) cs.setAttribute("content", mode);
   if (typeof refreshAppearance === "function") refreshAppearance();
   if (typeof refreshIndicatorsSheet === "function") refreshIndicatorsSheet();
   if (typeof refreshMonthOptions === "function") refreshMonthOptions();

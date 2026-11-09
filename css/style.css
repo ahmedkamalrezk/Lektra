@@ -184,15 +184,14 @@ html{scroll-padding-top:var(--safe-top)}
 button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent-text,var(--accent));outline-offset:2px}
 .box:focus{outline:none}
 body{display:flex;justify-content:center;align-items:center}
-/* iOS paints the strip above the page from the fixed layer that reaches that
-   edge, and it only refreshes that sample when such a layer is attached. Keep
-   one opaque strip there at all times, painted with the exact colour that
-   belongs above the page (the app background, or the open sheet's blend over
-   it). It sits outside #app so a sheet can never paint over it, and
-   syncThemeColor() detaches and re-attaches it across one frame on every
-   colour change: the un-covered instant shows the very same colour, so it is
-   invisible, and iOS takes a fresh sample right away. */
-#statusStrip{position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:var(--app-bg);pointer-events:none;z-index:9999}
+/* iOS colours the strip above the page by sampling the fixed layer at the top
+   edge. Keep one opaque strip there for the whole session and only ever change
+   its background: removing it leaves the bar stuck on the last colour. It must
+   be more than 10px deep to qualify, and in iOS 26 standalone the top inset is
+   sometimes 0, so never size it with env() alone. It sits outside #app so a
+   sheet can never paint over it, and its colour is the exact final colour of
+   the page top (app background, or the open sheet's blend over it). */
+#statusStrip{position:fixed;top:0;left:0;right:0;height:max(12px,env(safe-area-inset-top,0px));background:var(--app-bg);pointer-events:none;z-index:9999}
 #app{width:100%;max-width:430px;height:100%;background:var(--app-bg);color:var(--t1);container-type:inline-size;overflow:hidden;position:relative}
 /* contain:layout keeps the fixed full-screen layers (which iOS needs for the
    status-bar sample) inside the phone frame on wide screens instead of letting

@@ -166,7 +166,7 @@ function scanWorkerStart() {
   if (scanWorker) return scanWorker;
   if (scanWorkerBroken || typeof Worker !== "function") { scanWorkerBroken = true; return null; }
   try {
-    scanWorker = new Worker("js/scan-worker.js?v=v203");
+    scanWorker = new Worker("js/scan-worker.js?v=v204");
   } catch (e) {
     scanWorkerBroken = true;
     scanWorker = null;
