@@ -376,8 +376,7 @@ function bindAppearancePage(page, box) {
       b.onclick = function () {
         var m = b.getAttribute("data-mode");
         if (state.settings.theme === m) return;
-        state.settings.theme = m;
-        save(); applyTheme(); requestRender();
+        switchTheme(m);
       };
     });
     box.querySelectorAll("[data-acc]").forEach(function (b) {
@@ -585,7 +584,12 @@ function selectTheme(id) {
   if (state.settings.preset === id) return;
   state.settings.preset = id;
   state.settings.accent = p.accent;
-  if (p.mode) state.settings.theme = p.mode;
+  // A preset can carry its own mode. Route that through switchTheme so the
+  // status bar gets the new colour a frame early instead of lagging behind.
+  if (p.mode && p.mode !== state.settings.theme) {
+    switchTheme(p.mode);
+    return;
+  }
   save(); applyTheme(); requestRender();
 }
 

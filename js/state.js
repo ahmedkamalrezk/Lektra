@@ -258,6 +258,15 @@ function blendCssColor(fg, bg) {
   return "#" + hex(r) + hex(g) + hex(bl);
 }
 
+// The background the app paints for a given mode. Kept separate from
+// applyTheme() so a theme switch can work out the target colour before it is
+// painted (see switchTheme below).
+function themeAppBg(mode) {
+  var p = themeById(state.settings.preset);
+  if (p && p.id === "quiet") return mode === "light" ? "#ffffff" : "#000000";
+  return (p && p.mode === mode && p.bg) ? p.bg : (mode === "light" ? "#f5f5f7" : "#161616");
+}
+
 // The strip iOS paints above the page follows the fixed layer at the top
 // edge. Keep it in place and only change its colour: removing it makes WebKit
 // keep the last sampled colour, and a background change on a qualifying strip
@@ -309,6 +318,80 @@ function syncThemeColor(bgOverride) {
   paintStatusStrip(color);
 }
 
+// The colour the status strip has to sample for `mode`, computed without
+// painting that mode. The dim colours (--overlay, --scrim) live on
+// :root[data-theme], so flip the attribute, read, and put it back before the
+// browser can render a frame.
+function statusStripColorFor(mode) {
+  var appBg = themeAppBg(mode);
+  var modal = document.getElementById("modal");
+  var app = document.getElementById("app");
+  var dim = null;
+  if (modal && modal.classList.contains("show")) {
+    dim = modal.querySelector(".scan-warn") || modal.querySelector(".sheet-scrim") || modal;
+  } else if (app && app.classList.contains("chatting")) {
+    dim = document.getElementById("chat");
+  } else if (document.getElementById("dayMenu")) {
+    dim = document.querySelector("#dayMenu .dm-scrim");
+  } else if (app && app.classList.contains("composing")) {
+    dim = document.getElementById("composerScrim");
+  }
+  if (!dim) return appBg;
+  var root = document.documentElement;
+  var prevTheme = root.getAttribute("data-theme");
+  var prevBg = root.style.getPropertyValue("--app-bg");
+  root.setAttribute("data-theme", mode);
+  root.style.setProperty("--app-bg", appBg);
+  var dimColor = getComputedStyle(dim).backgroundColor;
+  if (prevBg) root.style.setProperty("--app-bg", prevBg);
+  else root.style.removeProperty("--app-bg");
+  if (prevTheme) root.setAttribute("data-theme", prevTheme);
+  else root.removeAttribute("data-theme");
+  return blendCssColor(dimColor, appBg);
+}
+
+// iOS samples the status strip a frame or two after its colour changes. A
+// light/dark switch moves that colour a long way, so the bar can keep the old
+// theme for a moment. Hand the new colour to the system one frame early and
+// keep the strip looking unchanged with an opaque gradient of the old colour
+// on top, then commit the theme: the sample is already current when the page
+// flips, so both change together and no old-theme band is left behind.
+var themeSwitchToken = 0;
+function switchTheme(mode) {
+  if (state.settings.theme === mode) return;
+  var token = ++themeSwitchToken;
+  state.settings.theme = mode;
+  save();
+  var strip = document.getElementById("statusStrip");
+  if (strip) {
+    var previous = paintedStripColor || strip.style.backgroundColor;
+    var target = statusStripColorFor(mode);
+    if (previous && target) {
+      if (previous !== target) {
+        // Sample the new colour, but keep painting the old one until the
+        // theme actually flips.
+        strip.style.backgroundImage =
+          "linear-gradient(" + previous + "," + previous + ")";
+      } else {
+        strip.style.backgroundImage = "none";
+      }
+      strip.style.backgroundColor = target;
+    }
+  }
+  var committed = false;
+  var commit = function () {
+    if (committed || token !== themeSwitchToken) return;
+    committed = true;
+    themeSwitchToken = 0;
+    var s = document.getElementById("statusStrip");
+    if (s) s.style.backgroundImage = "none";
+    applyTheme();
+    requestRender();
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(commit);
+  setTimeout(commit, 120);        // rAF can be throttled while the app is hidden
+}
+
 function applyTheme() {
   var root = document.documentElement;
   var s = state.settings;
@@ -319,8 +402,7 @@ function applyTheme() {
   // black-on-white in light.
   var accent = quiet ? (mode === "light" ? "#111114" : "#ffffff") : s.accent;
   EFFECTIVE_ACCENT = accent;
-  var appBg = quiet ? (mode === "light" ? "#ffffff" : "#000000") :
-    ((p && p.mode === mode && p.bg) ? p.bg : (mode === "light" ? "#f5f5f7" : "#161616"));
+  var appBg = themeAppBg(mode);
   root.setAttribute("data-theme", mode);
   root.style.setProperty("--accent", accent);
   root.style.setProperty("--accent-ink", accentInk(accent));
