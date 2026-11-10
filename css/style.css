@@ -740,14 +740,16 @@ button.cam-thumb{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .demptyemoji svg{width:4.2cqw;height:4.2cqw;animation:sparkIn .45s ease}
 @keyframes sparkIn{from{opacity:0;transform:scale(.6) rotate(-12deg)}}
 .demptytext{font-size:4.45cqw;font-weight:800;letter-spacing:-.02em;color:var(--t4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* New subject sheet: an example-name box with the same dashed look and the
-   same .demptytext font as the day's "Nothing on this day" placeholder. It
-   rotates through sample subject names and fills the field when tapped. */
-.subex{width:100%;margin:2.6cqw 0 0;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s ease,border-color .15s ease}
-.subex:active{background:var(--f05);border-color:var(--line-2)}
-.subex .demptytext{flex:1;min-width:0;text-align:left}
-.subex .demptytext.subswap{animation:subSwap .32s cubic-bezier(.2,.9,.25,1)}
-@keyframes subSwap{from{opacity:0;transform:translateY(1.1cqw)}to{opacity:1;transform:none}}
+/* New subject sheet: the dashed "Nothing on this day" box is also the name
+   field. While it is empty it shows sample subject names in the same font as
+   the day's placeholder, each with an icon that belongs to that subject. */
+.subex{width:100%;margin:4cqw 0 0;font:inherit;color:inherit;text-align:left;cursor:text;-webkit-tap-highlight-color:transparent;transition:background .15s ease,border-color .15s ease}
+.subex:focus-within{background:var(--f05);border-color:var(--line-2)}
+.subex .demptyemoji{width:5.4cqw;height:5.4cqw}
+.subex .demptyemoji svg{width:5.4cqw;height:5.4cqw}
+.box .subex input{flex:1;min-width:0;width:auto;height:auto;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0;font-size:max(16px,4.45cqw);font-weight:800;letter-spacing:-.02em;line-height:1.2;color:var(--t1);text-align:left;-webkit-appearance:none;appearance:none}
+.box .subex input:focus{border:0}
+.box .subex input::placeholder{color:var(--t4);opacity:1;font-weight:800;letter-spacing:-.02em}
 
 /* day timeline */
 .dtimeline{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}

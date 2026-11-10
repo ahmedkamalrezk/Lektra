@@ -1,17 +1,30 @@
 // ===== Subjects (folders) =====
-// Sample names for the box under the name field. The box looks like the day's
-// "Nothing on this day" placeholder and cycles through these so the sheet
-// shows what a subject can look like without the user typing anything.
+// The New subject sheet has a single dashed box, shaped like the day's
+// "Nothing on this day" placeholder. It is the name field: while it is empty it
+// shows sample subject names in turn, each with an icon that belongs to that
+// subject, so the box reads as a real example instead of a hint. Typing takes
+// over; deleting the text brings the examples back.
 var SUBJECT_EXAMPLES = [
-  "Data Structures",
-  "Linear Algebra",
-  "Organic Chemistry",
-  "Microeconomics",
-  "Operating Systems",
-  "Discrete Math",
-  "Computer Networks",
-  "Machine Learning"
+  { name: "Data Structures", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="4.6" r="2.3"/><circle cx="6" cy="12.9" r="2.3"/><circle cx="18" cy="12.9" r="2.3"/><circle cx="6" cy="20.4" r="1.9"/><path d="M10.9 6.6 7.1 11M13.1 6.6l3.8 4.4M6 15.2v3.3"/></svg>' },
+  { name: "Linear Algebra", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.4 3.4H4.8v17.2h2.6M16.6 3.4h2.6v17.2h-2.6"/><path d="M9.2 8.2h5.6M9.2 12h5.6M9.2 15.8h5.6"/></svg>' },
+  { name: "Organic Chemistry", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.4 3.2h5.2M10.4 3.2v5.1L5.5 17.4A2.6 2.6 0 0 0 7.8 21.4h8.4a2.6 2.6 0 0 0 2.3-4L13.6 8.3V3.2"/><path d="M7.6 15.4h8.8"/></svg>' },
+  { name: "Microeconomics", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 3.6v16.8h16.2"/><path d="M8.2 20.4v-5.2M12.6 20.4v-9M17 20.4v-6.6"/></svg>' },
+  { name: "Operating Systems", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.2" y="4.2" width="17.6" height="15.6" rx="3"/><path d="M7.6 9.6l3 2.4-3 2.4M12.8 15.2h4"/></svg>' },
+  { name: "Discrete Math", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.2" cy="18" r="2.2"/><circle cx="12" cy="4.8" r="2.2"/><circle cx="18.8" cy="13.4" r="2.2"/><path d="M6.6 16.2 10.7 6.8M13.6 6.6l3.7 5.1M7.4 18.6l9.2-4.4"/></svg>' },
+  { name: "Computer Networks", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2M12 3.4c2.3 2.4 3.5 5.3 3.5 8.6s-1.2 6.2-3.5 8.6c-2.3-2.4-3.5-5.3-3.5-8.6S9.7 5.8 12 3.4z"/></svg>' },
+  { name: "Machine Learning", icon:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.6"/><path d="M10.2 3.2v3.8M13.8 3.2v3.8M10.2 17v3.8M13.8 17v3.8M3.2 10.2h3.8M3.2 13.8h3.8M17 10.2h3.8M17 13.8h3.8"/></svg>' }
 ];
+// Shown once the user writes a name of their own: the icon stays subject-like
+// instead of keeping the icon of whichever example happened to be on screen.
+var SUBJECT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.2 4.6A2.6 2.6 0 0 1 7.8 2h10.7v15.4H7.8a2.6 2.6 0 0 0-2.6 2.6V4.6z"/><path d="M5.2 20a2.6 2.6 0 0 1 2.6-2.6h10.7V22H7.8A2.6 2.6 0 0 1 5.2 20z"/></svg>';
 var SUBJECT_EXAMPLE_MS = 2600;
 var subjectExampleTimer = null;
 
@@ -26,12 +39,11 @@ function stopSubjectExamples() {
 
 function addSubject(after) {
   openModal(
-    '<h2>New subject</h2><label for="fName">Name</label>' +
-    '<input id="fName" placeholder="e.g. Data Structures" autocomplete="off" autocapitalize="words">' +
-    '<button class="demptybox subex" id="subExample" type="button" aria-label="Use an example subject name">' +
-      '<span class="demptyemoji" aria-hidden="true">' + DAY_SPARKS[0] + '</span>' +
-      '<span class="demptytext" id="subExampleText">' + esc(SUBJECT_EXAMPLES[0]) + '</span>' +
-    '</button>',
+    '<h2>New subject</h2>' +
+    '<div class="demptybox subex" id="subExample">' +
+      '<span class="demptyemoji" id="subExampleIcon" aria-hidden="true">' + SUBJECT_EXAMPLES[0].icon + '</span>' +
+      '<input id="fName" placeholder="' + esc(SUBJECT_EXAMPLES[0].name) + '" autocomplete="off" autocapitalize="words" aria-label="Subject name">' +
+    '</div>',
     function () {
       var name = document.getElementById("fName").value.trim();
       if (!name) return false;
@@ -43,37 +55,46 @@ function addSubject(after) {
 
   var input = document.getElementById("fName");
   var boxEl = document.getElementById("subExample");
-  var textEl = document.getElementById("subExampleText");
-  var iconEl = boxEl && boxEl.querySelector(".demptyemoji");
-  if (!input || !boxEl || !textEl) return;
+  var iconEl = document.getElementById("subExampleIcon");
+  if (!input || !boxEl || !iconEl) return;
 
   var i = 0;
+  function paintIcon() {
+    iconEl.innerHTML = input.value.trim() ? SUBJECT_ICON : SUBJECT_EXAMPLES[i].icon;
+  }
   function show(n) {
     i = ((n % SUBJECT_EXAMPLES.length) + SUBJECT_EXAMPLES.length) % SUBJECT_EXAMPLES.length;
-    textEl.textContent = SUBJECT_EXAMPLES[i];
-    if (iconEl) iconEl.innerHTML = DAY_SPARKS[i % DAY_SPARKS.length];
-    // Restart the swap animation so every change reads as deliberate.
-    textEl.classList.remove("subswap");
-    void textEl.offsetWidth;
-    textEl.classList.add("subswap");
+    if (input.value.trim()) return;
+    input.placeholder = SUBJECT_EXAMPLES[i].name;
+    paintIcon();
+  }
+  function startExamples() {
+    stopSubjectExamples();
+    if (input.value.trim()) return;
+    subjectExampleTimer = setInterval(function () {
+      // Closing the sheet by any route (button, backdrop, drag) leaves the box
+      // markup inside #box but takes the sheet off screen; the rotation must die
+      // with it instead of running for the rest of the session.
+      var m = document.getElementById("modal");
+      if (!m || !m.classList.contains("show")) { stopSubjectExamples(); return; }
+      if (input.value.trim()) { stopSubjectExamples(); return; }
+      show(i + 1);
+    }, SUBJECT_EXAMPLE_MS);
   }
 
-  // Tapping the example drops it into the field, ready to edit or save.
-  boxEl.onclick = function () {
-    input.value = SUBJECT_EXAMPLES[i];
-    try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
-    try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
-  };
+  // Writing a name stops the rotation; clearing the field brings it back.
+  input.addEventListener("input", function () {
+    paintIcon();
+    if (input.value.trim()) stopSubjectExamples();
+    else startExamples();
+  });
+  // The whole dashed box is the field, so tapping its padding focuses the input.
+  boxEl.addEventListener("click", function (e) {
+    if (e.target === input) return;
+    try { input.focus({ preventScroll: true }); } catch (err) { input.focus(); }
+  });
 
-  stopSubjectExamples();
-  subjectExampleTimer = setInterval(function () {
-    // Closing the sheet by any route (button, backdrop, drag) leaves the box
-    // markup inside #box but takes the sheet off screen; the rotation must die
-    // with it instead of running for the rest of the session.
-    var m = document.getElementById("modal");
-    if (!m || !m.classList.contains("show")) { stopSubjectExamples(); return; }
-    show(i + 1);
-  }, SUBJECT_EXAMPLE_MS);
+  startExamples();
 }
 
 function renderSubjects() {
