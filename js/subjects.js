@@ -1,12 +1,79 @@
 // ===== Subjects (folders) =====
+// Sample names for the box under the name field. The box looks like the day's
+// "Nothing on this day" placeholder and cycles through these so the sheet
+// shows what a subject can look like without the user typing anything.
+var SUBJECT_EXAMPLES = [
+  "Data Structures",
+  "Linear Algebra",
+  "Organic Chemistry",
+  "Microeconomics",
+  "Operating Systems",
+  "Discrete Math",
+  "Computer Networks",
+  "Machine Learning"
+];
+var SUBJECT_EXAMPLE_MS = 2600;
+var subjectExampleTimer = null;
+
+// One timer for the sheet: starting a new rotation always drops the old one,
+// so reopening the sheet can never stack two intervals on the same box.
+function stopSubjectExamples() {
+  if (subjectExampleTimer) {
+    clearInterval(subjectExampleTimer);
+    subjectExampleTimer = null;
+  }
+}
+
 function addSubject(after) {
-  openModal('<h2>New subject</h2><label for="fName">Name</label><input id="fName" placeholder="e.g. Data Structures">', function () {
-    var name = document.getElementById("fName").value.trim();
-    if (!name) return false;
-    var s = { id: uid(), name: name, files: [] };
-    state.subjects.push(s); save(); render();
-    if (after) setTimeout(after, 0);
-  });
+  openModal(
+    '<h2>New subject</h2><label for="fName">Name</label>' +
+    '<input id="fName" placeholder="e.g. Data Structures" autocomplete="off" autocapitalize="words">' +
+    '<button class="demptybox subex" id="subExample" type="button" aria-label="Use an example subject name">' +
+      '<span class="demptyemoji" aria-hidden="true">' + DAY_SPARKS[0] + '</span>' +
+      '<span class="demptytext" id="subExampleText">' + esc(SUBJECT_EXAMPLES[0]) + '</span>' +
+    '</button>',
+    function () {
+      var name = document.getElementById("fName").value.trim();
+      if (!name) return false;
+      stopSubjectExamples();
+      var s = { id: uid(), name: name, files: [] };
+      state.subjects.push(s); save(); render();
+      if (after) setTimeout(after, 0);
+    });
+
+  var input = document.getElementById("fName");
+  var boxEl = document.getElementById("subExample");
+  var textEl = document.getElementById("subExampleText");
+  var iconEl = boxEl && boxEl.querySelector(".demptyemoji");
+  if (!input || !boxEl || !textEl) return;
+
+  var i = 0;
+  function show(n) {
+    i = ((n % SUBJECT_EXAMPLES.length) + SUBJECT_EXAMPLES.length) % SUBJECT_EXAMPLES.length;
+    textEl.textContent = SUBJECT_EXAMPLES[i];
+    if (iconEl) iconEl.innerHTML = DAY_SPARKS[i % DAY_SPARKS.length];
+    // Restart the swap animation so every change reads as deliberate.
+    textEl.classList.remove("subswap");
+    void textEl.offsetWidth;
+    textEl.classList.add("subswap");
+  }
+
+  // Tapping the example drops it into the field, ready to edit or save.
+  boxEl.onclick = function () {
+    input.value = SUBJECT_EXAMPLES[i];
+    try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+  };
+
+  stopSubjectExamples();
+  subjectExampleTimer = setInterval(function () {
+    // Closing the sheet by any route (button, backdrop, drag) leaves the box
+    // markup inside #box but takes the sheet off screen; the rotation must die
+    // with it instead of running for the rest of the session.
+    var m = document.getElementById("modal");
+    if (!m || !m.classList.contains("show")) { stopSubjectExamples(); return; }
+    show(i + 1);
+  }, SUBJECT_EXAMPLE_MS);
 }
 
 function renderSubjects() {

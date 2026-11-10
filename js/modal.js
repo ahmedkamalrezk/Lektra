@@ -123,6 +123,8 @@ function closeModal() {
   modalCloseGuard = null;
   // A pending AI scan must not reopen the sheet after the user closed it.
   if (typeof cancelScan === "function") cancelScan();
+  // The rotating example in the New subject sheet stops with the sheet.
+  if (typeof stopSubjectExamples === "function") stopSubjectExamples();
   var m = document.getElementById("modal");
   // The shell always contains #modal, but a close fired during teardown should
   // not throw on a page where it has already been removed.
