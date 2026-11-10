@@ -352,10 +352,10 @@ function statusStripColorFor(mode) {
 
 // iOS samples the status strip a frame or two after its colour changes. A
 // light/dark switch moves that colour a long way, so the bar can keep the old
-// theme for a moment. Hand the new colour to the system one frame early and
-// keep the strip looking unchanged with an opaque gradient of the old colour
-// on top, then commit the theme: the sample is already current when the page
-// flips, so both change together and no old-theme band is left behind.
+// theme for a moment. Hand the new colour to the system one frame early, then
+// commit the theme: the sample is already current when the page flips, so the
+// bar and the page change together. The strip is only 20% opaque (see the CSS),
+// so that early frame is not visible on the page.
 var themeSwitchToken = 0;
 function switchTheme(mode) {
   if (state.settings.theme === mode) return;
@@ -364,27 +364,14 @@ function switchTheme(mode) {
   save();
   var strip = document.getElementById("statusStrip");
   if (strip) {
-    var previous = paintedStripColor || strip.style.backgroundColor;
     var target = statusStripColorFor(mode);
-    if (previous && target) {
-      if (previous !== target) {
-        // Sample the new colour, but keep painting the old one until the
-        // theme actually flips.
-        strip.style.backgroundImage =
-          "linear-gradient(" + previous + "," + previous + ")";
-      } else {
-        strip.style.backgroundImage = "none";
-      }
-      strip.style.backgroundColor = target;
-    }
+    if (target) strip.style.backgroundColor = target;
   }
   var committed = false;
   var commit = function () {
     if (committed || token !== themeSwitchToken) return;
     committed = true;
     themeSwitchToken = 0;
-    var s = document.getElementById("statusStrip");
-    if (s) s.style.backgroundImage = "none";
     applyTheme();
     requestRender();
   };

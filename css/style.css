@@ -185,13 +185,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .box:focus{outline:none}
 body{display:flex;justify-content:center;align-items:center}
 /* iOS colours the strip above the page by sampling the fixed layer at the top
-   edge. Keep one opaque strip there for the whole session and only ever change
-   its background: removing it leaves the bar stuck on the last colour. It must
-   be more than 10px deep to qualify, and in iOS 26 standalone the top inset is
+   edge. Keep one strip there for the whole session and only ever change its
+   background: removing it leaves the bar stuck on the last colour. It must be
+   more than 10px deep to qualify, and in iOS 26 standalone the top inset is
    sometimes 0, so never size it with env() alone. It sits outside #app so a
    sheet can never paint over it, and its colour is the exact final colour of
-   the page top (app background, or the open sheet's blend over it). */
-#statusStrip{position:fixed;top:0;left:0;right:0;height:max(12px,env(safe-area-inset-top,0px));background:var(--app-bg);pointer-events:none;z-index:9999}
+   the page top (app background, or the open sheet's blend over it).
+   It is 15% opaque on purpose: its colour always equals the pixels underneath,
+   so it still looks identical, but a colour set a frame before the theme flips
+   (to give iOS's sampler a head start) does not show on the page. The sampler
+   reads background-color, which opacity does not change. */
+#statusStrip{position:fixed;top:0;left:0;right:0;height:max(12px,env(safe-area-inset-top,0px));background:var(--app-bg);opacity:.15;pointer-events:none;z-index:9999}
 #app{width:100%;max-width:430px;height:100%;background:var(--app-bg);color:var(--t1);container-type:inline-size;overflow:hidden;position:relative}
 /* contain:layout keeps the fixed full-screen layers (which iOS needs for the
    status-bar sample) inside the phone frame on wide screens instead of letting
